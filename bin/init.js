@@ -26,9 +26,27 @@ if (process.env.PI_MIND_SKIP_INIT === "1") {
 const __filename = fileURLToPath(import.meta.url);
 const PKG_ROOT = resolve(dirname(__filename), "..");
 
-// Walk up from PKG_ROOT to find the host project root (parent of node_modules/).
-function findHostRoot(start) {
-  let dir = resolve(start);
+/**
+ * Locate the host project root.
+ *
+ * Preferred: $INIT_CWD (set by npm to the directory where npm was invoked).
+ * This is the only reliable signal when npm symlinks the package (file:
+ * installs, npm link, workspaces) — walking up from PKG_ROOT lands in the
+ * source tree, not the host repo.
+ *
+ * Fallback: walk up from PKG_ROOT looking for a node_modules ancestor.
+ *   This works for normal published-package installs where pkg lives at
+ *   <host>/node_modules/<pkg>/ on disk.
+ *
+ * If neither yields a different directory than PKG_ROOT itself, we assume
+ * dev mode (npm install inside the package's own repo) and skip.
+ */
+function findHostRoot() {
+  const initCwd = process.env.INIT_CWD;
+  if (initCwd && resolve(initCwd) !== PKG_ROOT) {
+    return resolve(initCwd);
+  }
+  let dir = resolve(PKG_ROOT);
   while (dir !== "/" && dir !== ".") {
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -40,9 +58,8 @@ function findHostRoot(start) {
   return null;
 }
 
-const HOST_ROOT = findHostRoot(PKG_ROOT);
+const HOST_ROOT = findHostRoot();
 if (!HOST_ROOT) {
-  // Probably running inside the pi-mind repo itself (npm install in dev). Skip.
   console.log("[pi-mind] not installed in a host project (dev mode), skipping init");
   process.exit(0);
 }
