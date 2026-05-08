@@ -1,0 +1,8 @@
+{
+  "name": "jimeng-extension",
+  "private": true,
+  "dependencies": {
+    "@volcengine/openapi": "^1.0.0",
+    "@sinclair/typebox": "^0.34.0"
+  }
+}
