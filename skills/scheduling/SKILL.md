@@ -1,29 +1,33 @@
 ---
 name: scheduling
-description: Help the user install a crontab entry to run a periodic pi task. Use whenever the user wants something to happen on a schedule — "every day", "every Monday", "remind me to X weekly", "run wiki-lint nightly", "check Y every hour". Outputs a crontab snippet for the user to install with `crontab -e`. Never modifies crontab automatically.
+description: Help the user install, list, or remove crontab entries for periodic pi tasks. Use whenever the user wants something to happen on a schedule — "every day at X", "weekly", "remind me", "run this nightly" — or wants to see/cancel a previously scheduled task. Uses install_cron / list_cron / remove_cron tools. Always show the user the full crontab line and get explicit confirmation before installing or removing.
 ---
 
 # scheduling
 
-The user wants something to happen periodically. You produce a crontab snippet
-they can install themselves. You never edit `crontab` yourself — that's a
-sensitive system change.
+The user wants to manage periodic tasks. You have three tools:
 
-## Intent triggers
+- `install_cron(cron_expression, command, description)` — add a new entry
+- `list_cron()` — show all pi-mind-installed entries
+- `remove_cron(match)` — remove one entry by description substring
 
-Use this skill when the user says:
+These tools edit the user's actual crontab. **Always confirm with the user
+before calling install_cron or remove_cron.** Show the full line first.
 
-- "every day / week / hour at X o'clock"
-- "remind me to ... weekly"
-- "run X periodically / nightly / every Monday"
-- "schedule Y" / "set up a cron job"
-- "check the build every 30 minutes"
+## Intent recognition
 
-## Workflow
+| User says | You do |
+|---|---|
+| "every day / week / hour at X", "schedule Y", "run Y nightly" | propose install_cron |
+| "what cron jobs are running?", "show me my schedules" | call list_cron immediately (read-only, no confirm needed) |
+| "stop / cancel / remove the X reminder" | call list_cron first to find the match, then propose remove_cron |
+| "change Y to run at 9 instead of 8" | propose remove + install (the tools don't have an update operation) |
 
-### 1. Determine the schedule
+## install_cron workflow
 
-Convert plain English to a cron expression:
+### 1. Build the cron expression
+
+Convert plain English → 5-field cron syntax:
 
 | User says | Cron expression |
 |---|---|
@@ -33,91 +37,92 @@ Convert plain English to a cron expression:
 | every weekday at 18:00 | `0 18 * * 1-5` |
 | every hour | `0 * * * *` |
 | every 15 minutes | `*/15 * * * *` |
-| every 1st of the month | `0 0 1 * *` |
-| every Sunday at midnight | `0 0 * * 0` |
+| every 1st of month | `0 0 1 * *` |
+| every Sunday midnight | `0 0 * * 0` |
 
-Field order: `minute hour day-of-month month day-of-week command`. Day-of-week
-0=Sunday or 7=Sunday, 1=Monday … 6=Saturday.
+Field order: `minute hour day-of-month month day-of-week`.
+Day-of-week: 0=Sunday or 7=Sunday, 1=Monday … 6=Saturday.
 
-### 2. Determine the command
+### 2. Build the command
 
-What should run periodically? Common cases:
+Standard shape:
 
-- **A pi-mind built-in skill (daily-audit, wiki-lint)** — there's a shortcut:
-  ```bash
-  npx pi-mind-cron --skill daily-audit    # prints the recommended snippet
-  npx pi-mind-cron --skill wiki-lint
-  ```
-  Just run the command and show the output to the user. No need to compose by hand.
+```
+cd <abs-repo-path> && pi -p "<prompt>" >> .pi-mind/cron.log 2>&1
+```
 
-- **A custom skill the user wrote** — you compose:
-  ```
-  cd <repo-abs-path> && pi -p "use <skill-name> skill" >> .pi-mind/cron.log 2>&1
-  ```
+For pi-mind built-ins use the dedicated CLIs (faster, no LLM for lint):
 
-- **An ad-hoc prompt** — you compose:
-  ```
-  cd <repo-abs-path> && pi -p "<prompt-text>" >> .pi-mind/cron.log 2>&1
-  ```
-
-### 3. Format the full crontab line
+```
+cd <abs-repo-path> && npx pi-mind-lint --fix >> .pi-mind/cron.log 2>&1
+cd <abs-repo-path> && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
+```
 
 Always include:
+- `cd <abs-path>` — cron's working dir is `$HOME` by default
+- `>> .pi-mind/cron.log 2>&1` — capture stdout AND stderr for debugging
 
-- **`cd <abs-path>`** — cron's working dir is `$HOME` by default; force the repo
-- **`pi -p "..."`** — non-interactive prompt mode (pi exits when done)
-- **`>> .pi-mind/cron.log 2>&1`** — redirect both stdout and stderr to a log so failures are debuggable
+### 3. Pick a description
 
-Final shape:
+Short identifier, used by remove_cron later. Make it unique among existing entries (call list_cron first if unsure).
+
+Good: `"daily-audit"`, `"weekly-tweet-summary"`, `"morning-email-digest"`.
+Bad: `"task1"`, `"my-cron"`, `"abc"`.
+
+### 4. Show + confirm
+
+Before calling the tool, show the user the full line you're about to install:
 
 ```
-<cron-expression> cd <abs-repo-path> && pi -p "<prompt>" >> .pi-mind/cron.log 2>&1
+I'll install:
+  0 22 * * * cd /Users/foo/proj && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1   # pi-mind: daily-audit
+
+Proceed? (y/N)
 ```
 
-Example for "wiki-lint every night at 02:00 in /Users/foo/proj":
+Wait for user confirmation. Only on explicit "yes / y / 确认" call install_cron.
+
+### 5. Call install_cron
 
 ```
-0 2 * * * cd /Users/foo/proj && npx pi-mind-lint --fix >> /Users/foo/proj/.pi-mind/cron.log 2>&1
+install_cron({
+  cron_expression: "0 22 * * *",
+  command: 'cd /Users/foo/proj && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1',
+  description: "daily-audit"
+})
 ```
 
-(For pi-mind-built-in tasks, prefer using the dedicated CLI like
-`npx pi-mind-lint` over `pi -p "use wiki-lint skill"` — same result, faster
-because it skips loading the LLM.)
+The tool returns a confirmation message including the line installed.
 
-### 4. Hand to the user
+## remove_cron workflow
 
-Tell them:
-
-1. Run `crontab -e`
-2. Paste the line
-3. Save and exit (`:wq` in vim, Ctrl-O/Ctrl-X in nano)
-4. Verify with `crontab -l`
-
-Do **not** offer to install it for them, even if they ask. crontab edits
-should always be manual — the user sees what's in their crontab.
-
-## Verifying it ran
-
-When asked "did the cron job run?", check:
-
-```bash
-tail -50 .pi-mind/cron.log              # recent runs (success and failure)
-crontab -l | grep pi-mind                # confirm it's actually installed
+```
+list_cron()           → user sees their entries
+user identifies one to remove
+show full line you're about to remove → confirm → remove_cron({match: "daily-audit"})
 ```
 
-Failed cron runs typically show in the log; if the log is empty after expected
-run-time, the cron daemon may not be enabled or the entry may be syntactically
-wrong.
+If the user's match is ambiguous (matches multiple entries), the tool will
+return an error listing all matches; ask the user to be more specific.
 
 ## What you must NOT do
 
-- ❌ `crontab -l > /tmp/x && echo "..." >> /tmp/x && crontab /tmp/x` (silently editing user crontab)
-- ❌ Writing a node script that runs `setInterval` or `setTimeout` to simulate scheduling
-- ❌ Telling the user to install a daemon process (pm2, systemd, launchd) without confirming they want that complexity
-- ❌ Recommending Windows Task Scheduler instructions on macOS/Linux (and vice versa)
+- ❌ Call install_cron or remove_cron without showing the line and getting explicit confirmation
+- ❌ Bash-edit crontab directly (`crontab -l > x && echo ... >> x && crontab x`) — use the tools so the pi-mind marker is preserved
+- ❌ Touch any line in the user's crontab that doesn't carry `# pi-mind:` — those are user-written, off-limits
+- ❌ Suggest a daemon process (pm2, systemd, launchd) when cron is sufficient
+
+## Verifying it ran
+
+When asked "did the cron job run?":
+
+```bash
+tail -50 .pi-mind/cron.log              # success and failure output
+crontab -l | grep "# pi-mind:"           # confirm entries are still there
+```
 
 ## Platform notes
 
-- **macOS**: `crontab` works, but launchd is more idiomatic for system services. For user-level periodic tasks, `crontab -e` is the simplest path. macOS may ask for "Full Disk Access" permission for cron the first time.
-- **Linux**: `crontab` works out of the box. Some minimal containers/distros need `cron` package installed.
-- **Windows**: cron isn't native. Suggest WSL or PowerShell Scheduled Tasks; ask the user which they prefer before composing.
+- **macOS**: crontab works; first run may prompt for "Full Disk Access" permission
+- **Linux**: works out of the box; minimal containers may need `cron` package installed
+- **Windows**: cron isn't native — these tools won't work. Suggest WSL.

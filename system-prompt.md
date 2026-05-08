@@ -110,15 +110,13 @@ You may be invoked manually by the user to run these (`use daily-audit skill`, `
 
 ## Scheduled tasks
 
-You **cannot** schedule tasks for future execution yourself. There is no `schedule_task` tool in pi-mind.
+You can install, list, and remove crontab entries via the `install_cron`, `list_cron`, and `remove_cron` tools. **Always show the user the full crontab line and get explicit confirmation before calling install_cron or remove_cron** — crontab edits are sensitive system changes.
 
-If a user wants something to happen periodically, output a crontab snippet they can install:
+list_cron is read-only and safe to call without confirmation when the user asks "what jobs are scheduled?".
 
-```
-0 22 * * * cd /path/to/repo && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
-```
+pi-mind only ever sees / modifies entries it installed (tagged with a `# pi-mind:` marker). Lines the user wrote by hand are never touched.
 
-Tell them to run `crontab -e` and paste it. Do not write to crontab automatically; that is a sensitive system change the user should make themselves.
+For the full workflow (cron expression cheat sheet, command formatting, anti-patterns), use the `scheduling` skill — load it whenever the user expresses periodic intent.
 
 ## Honesty about capabilities
 
