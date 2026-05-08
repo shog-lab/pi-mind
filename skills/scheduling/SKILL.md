@@ -123,6 +123,27 @@ crontab -l | grep "# pi-mind:"           # confirm entries are still there
 
 ## Platform notes
 
-- **macOS**: crontab works; first run may prompt for "Full Disk Access" permission
-- **Linux**: works out of the box; minimal containers may need `cron` package installed
-- **Windows**: cron isn't native — these tools won't work. Suggest WSL.
+### macOS — first install may trigger an Authorization prompt
+
+The first time install_cron runs from your terminal, macOS may pop a dialog:
+
+> "<TerminalApp>" wants to manage your computer. Management may include modifying password, network settings, and system settings.
+
+**This wording is alarming but not what crontab actually does.** `crontab` is a setuid binary that writes to `/private/var/at/tabs/<user>/` — your own per-user cron spool. macOS just bundles all "elevated privileges" requests under that scary text.
+
+What actually happens if you click "Allow":
+- The terminal app gets a one-time authorization to invoke setuid binaries
+- macOS remembers the grant; subsequent install_cron calls don't re-prompt
+- The crontab edit goes through; nothing else changes
+
+If you click "Deny", install_cron fails with `Operation not permitted`. Tell the user upfront, before calling install_cron the first time, that this prompt may appear and what it means. Let them decide.
+
+If user prefers not to grant: they can fall back to `crontab -e` and paste the line you compose for them. Functional, just one extra step.
+
+### Linux
+
+Works out of the box. Minimal containers / distros may need the `cron` package installed.
+
+### Windows
+
+Cron isn't native. These tools won't work. Suggest WSL or PowerShell scheduled tasks (manual setup).
