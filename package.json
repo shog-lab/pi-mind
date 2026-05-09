@@ -14,8 +14,7 @@
   },
   "bin": {
     "pi-mind-init": "bin/init.js",
-    "pi-mind-lint": "bin/lint.js",
-    "pi-mind-cron": "bin/cron.js"
+    "pi-mind-lint": "bin/lint.js"
   },
   "files": [
     "extensions",

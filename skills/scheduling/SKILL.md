@@ -1,31 +1,33 @@
 ---
 name: scheduling
-description: Help the user install, list, or remove crontab entries for periodic pi tasks. Use whenever the user wants something to happen on a schedule — "every day at X", "weekly", "remind me", "run this nightly" — or wants to see/cancel a previously scheduled task. Uses install_cron / list_cron / remove_cron tools. Always show the user the full crontab line and get explicit confirmation before installing or removing.
+description: Help the user set up periodic tasks. pi-mind cannot install scheduled jobs itself — it provides the snippet/plist content; the user installs it via crontab or launchctl. Use when the user wants something to happen on a schedule and is willing to do the install step themselves.
 ---
 
 # scheduling
 
-The user wants to manage periodic tasks. You have three tools:
+You **cannot** install scheduled tasks. There are no install_cron / install_schedule
+tools in pi-mind. Two reasons:
 
-- `install_cron(cron_expression, command, description)` — add a new entry
-- `list_cron()` — show all pi-mind-installed entries
-- `remove_cron(match)` — remove one entry by description substring
+1. **macOS Authorization model**: the OS prompts the user's terminal app for
+   broad "manage your computer" rights when crontab is invoked. Many users
+   reasonably refuse this prompt.
+2. **Self-evolution doesn't need cron**: pi-mind's daily-audit and wiki-lint
+   are auto-triggered when you start a pi session and they're overdue (see
+   the `<self-evolution>` context block). No external scheduler required.
 
-These tools edit the user's actual crontab. **Always confirm with the user
-before calling install_cron or remove_cron.** Show the full line first.
+So this skill is **for time-bound tasks the user explicitly wants on a fixed
+schedule** (e.g. "post a tweet at 9am Monday", "back up the DB at midnight"),
+not for memory hygiene.
 
-## Intent recognition
+## Workflow
 
-| User says | You do |
-|---|---|
-| "every day / week / hour at X", "schedule Y", "run Y nightly" | propose install_cron |
-| "what cron jobs are running?", "show me my schedules" | call list_cron immediately (read-only, no confirm needed) |
-| "stop / cancel / remove the X reminder" | call list_cron first to find the match, then propose remove_cron |
-| "change Y to run at 9 instead of 8" | propose remove + install (the tools don't have an update operation) |
+### 1. Confirm it actually needs a schedule
 
-## install_cron workflow
+If the user says "audit memory periodically" — that already runs automatically.
+Tell them so and skip the rest. Only proceed if the task is genuinely
+time-bound.
 
-### 1. Build the cron expression
+### 2. Build the cron expression
 
 Convert plain English → 5-field cron syntax:
 
@@ -37,13 +39,12 @@ Convert plain English → 5-field cron syntax:
 | every weekday at 18:00 | `0 18 * * 1-5` |
 | every hour | `0 * * * *` |
 | every 15 minutes | `*/15 * * * *` |
-| every 1st of month | `0 0 1 * *` |
 | every Sunday midnight | `0 0 * * 0` |
 
 Field order: `minute hour day-of-month month day-of-week`.
 Day-of-week: 0=Sunday or 7=Sunday, 1=Monday … 6=Saturday.
 
-### 2. Build the command
+### 3. Build the command
 
 Standard shape:
 
@@ -51,99 +52,79 @@ Standard shape:
 cd <abs-repo-path> && pi -p "<prompt>" >> .pi-mind/cron.log 2>&1
 ```
 
-For pi-mind built-ins use the dedicated CLIs (faster, no LLM for lint):
+Always include `cd`, the prompt, and the log redirect (cron has no terminal).
+
+### 4. Hand to the user
+
+Output the line and tell them to install:
 
 ```
-cd <abs-repo-path> && npx pi-mind-lint --fix >> .pi-mind/cron.log 2>&1
-cd <abs-repo-path> && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
+0 9 * * 1 cd /Users/foo/proj && pi -p "post weekly tweet" >> .pi-mind/cron.log 2>&1
 ```
 
-Always include:
-- `cd <abs-path>` — cron's working dir is `$HOME` by default
-- `>> .pi-mind/cron.log 2>&1` — capture stdout AND stderr for debugging
+Then:
 
-### 3. Pick a description
+> Run `crontab -e` and paste the line above. Save and exit.
+>
+> **macOS heads-up**: the first time crontab runs, macOS may prompt your
+> terminal app (Terminal.app / Ghostty / iTerm) for "manage your computer"
+> permission. The wording is alarming but it only enables crontab access for
+> your per-user spool. You can deny — in which case scheduling won't work
+> on this machine and you'd need launchd (see below) or a remote scheduler.
 
-Short identifier, used by remove_cron later. Make it unique among existing entries (call list_cron first if unsure).
+### 5. macOS-specific alternative: launchd
 
-Good: `"daily-audit"`, `"weekly-tweet-summary"`, `"morning-email-digest"`.
-Bad: `"task1"`, `"my-cron"`, `"abc"`.
+If the user denies the macOS Authorization prompt, suggest launchd instead.
+Launchd uses per-user plist files in `~/Library/LaunchAgents/` and needs **no
+elevation**.
 
-### 4. Show + confirm
+Output a plist for them to save:
 
-Before calling the tool, show the user the full line you're about to install:
-
-```
-I'll install:
-  0 22 * * * cd /Users/foo/proj && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1   # pi-mind: daily-audit
-
-Proceed? (y/N)
-```
-
-Wait for user confirmation. Only on explicit "yes / y / 确认" call install_cron.
-
-### 5. Call install_cron
-
-```
-install_cron({
-  cron_expression: "0 22 * * *",
-  command: 'cd /Users/foo/proj && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1',
-  description: "daily-audit"
-})
-```
-
-The tool returns a confirmation message including the line installed.
-
-## remove_cron workflow
-
-```
-list_cron()           → user sees their entries
-user identifies one to remove
-show full line you're about to remove → confirm → remove_cron({match: "daily-audit"})
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pi-mind.weekly-tweet</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>cd /Users/foo/proj && pi -p "post weekly tweet" >> .pi-mind/cron.log 2>&1</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>0</integer>
+    <key>Weekday</key><integer>1</integer>
+  </dict>
+</dict>
+</plist>
 ```
 
-If the user's match is ambiguous (matches multiple entries), the tool will
-return an error listing all matches; ask the user to be more specific.
+Tell them:
+
+```
+1. Save above as ~/Library/LaunchAgents/com.pi-mind.weekly-tweet.plist
+2. Activate: launchctl load ~/Library/LaunchAgents/com.pi-mind.weekly-tweet.plist
+3. Verify: launchctl list | grep pi-mind
+4. Remove later: launchctl unload <path> && rm <path>
+```
 
 ## What you must NOT do
 
-- ❌ Call install_cron or remove_cron without showing the line and getting explicit confirmation
-- ❌ Bash-edit crontab directly (`crontab -l > x && echo ... >> x && crontab x`) — use the tools so the pi-mind marker is preserved
-- ❌ Touch any line in the user's crontab that doesn't carry `# pi-mind:` — those are user-written, off-limits
-- ❌ Suggest a daemon process (pm2, systemd, launchd) when cron is sufficient
+- ❌ Try to write to user's crontab via Bash (`echo ... | crontab -`) — this triggers the macOS prompt and bypasses informed consent
+- ❌ Try to write a launchd plist via Bash — same trust principle; user should see and place it themselves
+- ❌ Suggest a long-running daemon (pm2, forever) when cron/launchd is sufficient
+- ❌ Tell the user to "schedule daily-audit" — it auto-triggers
 
 ## Verifying it ran
 
-When asked "did the cron job run?":
+When asked "did the scheduled job run?":
 
 ```bash
-tail -50 .pi-mind/cron.log              # success and failure output
-crontab -l | grep "# pi-mind:"           # confirm entries are still there
+tail -50 .pi-mind/cron.log              # cron output
+launchctl list | grep pi-mind            # launchd jobs (macOS)
+crontab -l                               # crontab contents (if they used cron)
 ```
-
-## Platform notes
-
-### macOS — first install may trigger an Authorization prompt
-
-The first time install_cron runs from your terminal, macOS may pop a dialog:
-
-> "<TerminalApp>" wants to manage your computer. Management may include modifying password, network settings, and system settings.
-
-**This wording is alarming but not what crontab actually does.** `crontab` is a setuid binary that writes to `/private/var/at/tabs/<user>/` — your own per-user cron spool. macOS just bundles all "elevated privileges" requests under that scary text.
-
-What actually happens if you click "Allow":
-- The terminal app gets a one-time authorization to invoke setuid binaries
-- macOS remembers the grant; subsequent install_cron calls don't re-prompt
-- The crontab edit goes through; nothing else changes
-
-If you click "Deny", install_cron fails with `Operation not permitted`. Tell the user upfront, before calling install_cron the first time, that this prompt may appear and what it means. Let them decide.
-
-If user prefers not to grant: they can fall back to `crontab -e` and paste the line you compose for them. Functional, just one extra step.
-
-### Linux
-
-Works out of the box. Minimal containers / distros may need the `cron` package installed.
-
-### Windows
-
-Cron isn't native. These tools won't work. Suggest WSL or PowerShell scheduled tasks (manual setup).

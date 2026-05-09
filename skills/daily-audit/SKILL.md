@@ -93,7 +93,7 @@ Save the report as a knowledge entry so daily-audit history is queryable:
 
 ```markdown
 ---
-date: 2026-05-08T22:00:00.000Z
+date: 2026-05-09T22:00:00.000Z
 type: agent-feedback
 tier: L2
 tags: [daily-audit, audit-log]
@@ -104,16 +104,22 @@ tags: [daily-audit, audit-log]
 <paste the report body>
 ```
 
-## Cron invocation
+### 6. Mark complete
 
-Recommended user crontab:
+After writing the audit log, call:
 
 ```
-0 22 * * * cd /path/to/repo && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
+mark_daily_audit_complete({ summary: "<one-line: lint errors / warnings / archived count>" })
 ```
 
-The agent does NOT install this. Output a snippet for the user when asked to "schedule" anything.
+This silences the "audit overdue" notice in `<self-evolution>` context for the next 24 hours. Without this call, the next pi session will keep flagging audit as overdue.
+
+## How daily-audit gets triggered
+
+Pi-mind does NOT install a cron job. Instead, when you start a pi session and the last audit was > 24 hours ago, an `<self-evolution>` block is injected into your context with the message "Daily audit overdue — suggest running it before substantive work." That's your cue.
+
+Honor the suggestion at the start of the session unless the user is asking about something time-critical that would be derailed by a 30-second pause. In that case, finish the user's task first, then run audit, then call mark_daily_audit_complete.
 
 ## When invoked manually
 
-If the user runs `pi -p "use daily-audit skill"` interactively, follow the same flow but skip step 5 (audit log) if the user only wants a one-off report.
+If the user explicitly asks "run daily audit", follow the full flow including step 6. If they only want a one-off summary report (e.g., "give me a one-off lint check, don't touch the marker"), skip step 6.

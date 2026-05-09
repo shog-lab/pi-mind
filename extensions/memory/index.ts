@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { spawnPi } from "../../lib/spawn-pi.js";
 
 import { MemoryCore, parseFrontmatter, TIER_L1, withGroupLock } from "./core.js";
+import { getAuditStatus, markAuditDone, renderAuditNotice } from "./auto-audit.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // --- Config ---
@@ -501,6 +502,22 @@ export default function memExtension(pi: ExtensionAPI) {
     pi.injectContext(systemPrompt);
   }
 
+  // Self-evolution startup hook: surface "audit overdue" status as a context note.
+  // Agent decides when to honor — typically before substantive work in this session.
+  // The hook does NOT run the audit itself; daily-audit is an LLM-executed skill.
+  // Caller signals completion via mark_daily_audit_complete tool below.
+  pi.registerTool({
+    name: "mark_daily_audit_complete",
+    label: "Mark Daily Audit Complete",
+    description:
+      "Call this once after running the daily-audit skill end-to-end. Updates the audit timestamp so the overdue notice is silenced for the next 24 hours. Pass an optional one-line summary that will surface in the next audit notice.",
+    parameters: { type: "object", properties: { summary: { type: "string", description: "Optional one-line summary of audit findings" } } },
+    async execute(_id: string, params: { summary?: string }) {
+      markAuditDone(PI_MIND_DIR, params.summary);
+      return { content: [{ type: "text" as const, text: "Daily audit marked complete. Next overdue check in 24h." }], details: {} };
+    },
+  });
+
   // On compaction: save summary + do B+D+F maintenance
   pi.on("session_compact", async (event) => {
     const summary = event.compactionEntry.summary;
@@ -584,6 +601,10 @@ export default function memExtension(pi: ExtensionAPI) {
     await mc.syncIndex();
 
     const parts: string[] = [];
+
+    // Self-evolution: surface audit-overdue status if applicable
+    const auditNotice = renderAuditNotice(getAuditStatus(PI_MIND_DIR));
+    if (auditNotice) parts.push(auditNotice);
 
     // L1: Always inject preferences, decisions, facts
     const l1Entries = mc.loadL1();
