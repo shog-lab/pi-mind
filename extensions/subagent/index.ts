@@ -3,8 +3,7 @@
  *
  * Provides spawn_subagent tool for an agent to spawn a focused sub-agent in a
  * target directory. Sub-agents have minimal context: no memory access, no parent
- * skills, no system prompt — just the task and basic work tools (web_search,
- * agent_browser).
+ * skills, no system prompt — just the task and web_search.
  *
  * Use cases:
  *   - Classify a compaction summary without bias from existing memory
@@ -76,8 +75,10 @@ export default function subagentExtension(pi: ExtensionAPI) {
         args.push("--model", process.env.MODEL);
       }
 
-      // Load basic work tools — explicitly excludes memory (sub-agents must not touch parent memory)
-      const basicExts = ["web_search", "agent_browser"];
+      // Load basic work tools — explicitly excludes memory (sub-agents must not touch parent memory).
+      // Browser automation belongs in pi-chrome, not pi-mind, so it isn't loaded here;
+      // a sub-agent that needs the browser should be spawned from a pi-chrome-aware caller.
+      const basicExts = ["web_search"];
       for (const ext of basicExts) {
         const extPath = resolveExtensionPath(ext);
         if (extPath) args.push("-e", extPath);
