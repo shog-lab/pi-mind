@@ -1,6 +1,9 @@
 {
-  "name": "shog-image-understanding",
-  "version": "1.0.0",
+  "name": "@pi-mind/understand-image",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Image understanding via mmx vision CLI.",
   "type": "module",
+  "main": "index.js",
   "dependencies": {}
 }

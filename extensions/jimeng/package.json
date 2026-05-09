@@ -1,6 +1,10 @@
 {
-  "name": "jimeng-extension",
+  "name": "@pi-mind/jimeng",
+  "version": "0.1.0",
   "private": true,
+  "description": "Jimeng (即梦) image generation via Volcengine API.",
+  "type": "module",
+  "main": "index.js",
   "dependencies": {
     "@volcengine/openapi": "^1.0.0",
     "@sinclair/typebox": "^0.34.0"

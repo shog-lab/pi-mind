@@ -10,6 +10,7 @@
     "lint:wiki": "tsx scripts/wiki-lint.ts",
     "verify-feedback": "tsx scripts/verify-feedback.ts",
     "test": "vitest run",
+    "prepare": "tsc",
     "postinstall": "node bin/init.js"
   },
   "bin": {
@@ -17,18 +18,26 @@
     "pi-mind-lint": "bin/lint.js"
   },
   "files": [
-    "extensions",
-    "lib",
-    "skills",
-    "schema",
-    "scripts",
-    "bin"
+    "extensions/**/*.js",
+    "extensions/**/*.d.ts",
+    "extensions/**/*.js.map",
+    "extensions/**/package.json",
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
+    "lib/**/*.js.map",
+    "scripts/**/*.js",
+    "scripts/**/*.d.ts",
+    "scripts/**/*.js.map",
+    "skills/**",
+    "bin/**/*.js",
+    "system-prompt.md"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
+    "@volcengine/openapi": "^1.0.0",
     "better-sqlite3": "^11.8.1",
     "proper-lockfile": "^4.1.2"
   },

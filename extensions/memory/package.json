@@ -4,7 +4,7 @@
   "private": true,
   "description": "Memory extension for pi-coding-agent: episodic + knowledge + graph layers, FTS5 + vector + KG retrieval.",
   "type": "module",
-  "main": "index.ts",
+  "main": "index.js",
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "proper-lockfile": "^4.1.2"
