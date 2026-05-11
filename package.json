@@ -2,13 +2,12 @@
   "name": "pi-mind-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Monorepo housing pi-mind, pi-toolkit, and pi-chrome — agent capabilities for pi-coding-agent.",
+  "description": "Monorepo housing pi-mind and pi-toolkit — agent capabilities for pi-coding-agent.",
   "type": "module",
   "license": "MIT",
   "workspaces": [
     "packages/memory",
-    "packages/toolkit",
-    "packages/chrome"
+    "packages/toolkit"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

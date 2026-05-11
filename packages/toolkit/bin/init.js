@@ -12,6 +12,9 @@
 import { existsSync, mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 if (process.env.PI_TOOLKIT_SKIP_INIT === "1") {
   console.log("[pi-toolkit] init skipped (PI_TOOLKIT_SKIP_INIT=1)");
@@ -79,5 +82,19 @@ function linkInto(srcDir, destDir) {
 // Extensions are TypeScript-compiled — symlink to dist/extensions where pi
 // loads from .js (no .ts source siblings to confuse it).
 linkInto(join(PKG_ROOT, "dist", "extensions"), join(HOST_ROOT, ".pi", "extensions"));
+
+// agent-browser ships its own SKILL.md describing the CLI to the agent.
+// Symlink upstream (so `npm update agent-browser` auto-refreshes the skill)
+// instead of vendoring our own copy.
+try {
+  const abPkg = require.resolve("agent-browser/package.json");
+  const abSkillsDir = join(dirname(abPkg), "skills");
+  if (existsSync(abSkillsDir)) {
+    linkInto(abSkillsDir, join(HOST_ROOT, ".pi", "skills"));
+  }
+} catch {
+  // agent-browser isn't installed — shouldn't happen since it's a dependency,
+  // but don't break postinstall over it.
+}
 
 console.log(`[pi-toolkit] ready.`);
