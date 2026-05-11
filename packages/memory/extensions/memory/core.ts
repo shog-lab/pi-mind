@@ -4,7 +4,7 @@
  *
  * Three-layer memory model:
  *   knowledge/   — compiled, durable facts and decisions
- *   episodic/    — append-only event stream (sessions, observations, compactions)
+ *   raw/    — append-only event stream (sessions, observations, compactions)
  *   graph/       — relations extracted from frontmatter triples (managed by KG module)
  *
  * All directories are peers under PI_MIND_DIR.
@@ -219,7 +219,7 @@ export class MemoryCore {
   /** Primary write target: wiki/ */
   public knowledgeDir: string;
   /** Read-only source materials: raw/ */
-  public episodicDir: string;
+  public rawDir: string;
   /** @internal */
   public config: WikiConfig;
   private maxInjectTokens: number;
@@ -249,7 +249,7 @@ export class MemoryCore {
   }) {
     this.groupDir = opts.groupDir;
     this.knowledgeDir = join(opts.groupDir, "knowledge");
-    this.episodicDir = join(opts.groupDir, "episodic");
+    this.rawDir = join(opts.groupDir, "raw");
 
     // Load config from pi-mind-config.json (group-level overrides defaults)
     this.config = loadWikiConfig(opts.groupDir);
@@ -262,7 +262,7 @@ export class MemoryCore {
 
     // Ensure wiki/ and raw/ subdirectories exist
     mkdirSync(this.knowledgeDir, { recursive: true });
-    mkdirSync(this.episodicDir, { recursive: true });
+    mkdirSync(this.rawDir, { recursive: true });
 
     // Migrate legacy memory/ → wiki/ if needed
     if (opts.legacyMemoryDir && existsSync(opts.legacyMemoryDir)) {
@@ -332,7 +332,7 @@ export class MemoryCore {
         const { meta } = parseFrontmatter(raw);
         const memType = (meta.type as string) || "note";
         const subdir = TYPE_SUBDIR[memType]; // only compaction has a subdir
-        const destDir = subdir ? join(this.episodicDir, subdir) : this.knowledgeDir;
+        const destDir = subdir ? join(this.rawDir, subdir) : this.knowledgeDir;
         mkdirSync(destDir, { recursive: true });
         const dest = join(destDir, file);
         if (!existsSync(dest)) {
@@ -375,7 +375,7 @@ export class MemoryCore {
     if (existsSync(rawSrc)) {
       for (const file of collectMdFiles(rawSrc)) {
         const rel = relative(rawSrc, file);
-        const dest = join(this.episodicDir, rel);
+        const dest = join(this.rawDir, rel);
         if (!existsSync(dest)) {
           mkdirSync(join(dest, ".."), { recursive: true });
           try { renameSync(file, dest); } catch {}
@@ -403,7 +403,7 @@ export class MemoryCore {
 
   /** Get all directories to scan for indexing */
   private getScanDirs(): string[] {
-    return [this.knowledgeDir, this.episodicDir];
+    return [this.knowledgeDir, this.rawDir];
   }
 
   // --- Index sync ---
@@ -547,7 +547,7 @@ export class MemoryCore {
     return withGroupLock(this.groupDir, async () => {
       let destDir: string;
       if (subject === "compaction") {
-        destDir = join(this.episodicDir, "compaction");
+        destDir = join(this.rawDir, "compaction");
       } else {
         destDir = this.knowledgeDir;
       }

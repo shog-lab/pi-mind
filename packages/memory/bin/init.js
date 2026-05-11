@@ -7,7 +7,7 @@
  *   .pi/skills/<name>      →  node_modules/pi-mind/skills/<name>
  *
  * Creates fresh directories for the three memory layers (only if missing):
- *   .pi-mind/episodic/, .pi-mind/knowledge/, .pi-mind/graph/
+ *   .pi-mind/raw/, .pi-mind/knowledge/, .pi-mind/graph/
  *
  * Idempotent. User-customized files are never overwritten.
  *
@@ -106,7 +106,7 @@ linkInto(join(PKG_ROOT, "skills"), join(HOST_ROOT, ".pi", "skills"));
 
 // 2. Create memory layer directories under .pi-mind/
 const PI_MIND_DIR = process.env.PI_MIND_DIR || join(HOST_ROOT, ".pi-mind");
-ensureDir(join(PI_MIND_DIR, "episodic"));
+ensureDir(join(PI_MIND_DIR, "raw"));
 ensureDir(join(PI_MIND_DIR, "knowledge"));
 ensureDir(join(PI_MIND_DIR, "graph"));
 

@@ -6,7 +6,7 @@ Memory lives in `$PI_MIND_DIR` (defaults to `./.pi-mind` in the current repo) an
 
 ```
 $PI_MIND_DIR/
-├── episodic/    ← what happened (raw, append-only)
+├── raw/    ← what happened (raw, append-only)
 │   ├── sessions/      conversation transcripts
 │   ├── observations/  things you noticed during work
 │   └── compaction/    auto-saved conversation summaries (don't write here manually)
@@ -15,7 +15,7 @@ $PI_MIND_DIR/
 ```
 
 **Three layers, three roles:**
-- **episodic** — record raw events. Cheap to write. No need to be polished.
+- **raw** — record raw events. Cheap to write. No need to be polished.
 - **knowledge** — extract durable facts, decisions, concepts. Write only when the content has clear future-reuse value. Trivia and one-off details don't belong here.
 - **graph** — maintained automatically from frontmatter `triples`. You don't write to it directly.
 
@@ -88,7 +88,7 @@ Do NOT writeback for:
 
 ## Episodic logging
 
-You can write observations to `$PI_MIND_DIR/episodic/observations/` when you notice something worth recording but not yet ready to commit to knowledge. Format:
+You can write observations to `$PI_MIND_DIR/raw/observations/` when you notice something worth recording but not yet ready to commit to knowledge. Format:
 
 ```markdown
 ---

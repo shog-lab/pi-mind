@@ -53,7 +53,7 @@ describe("getAuditStatus", () => {
   });
 
   it("handles corrupted marker gracefully (treats as never run)", () => {
-    const markerDir = path.join(tmpDir, "episodic", "maintenance-log");
+    const markerDir = path.join(tmpDir, "raw", "maintenance-log");
     fs.mkdirSync(markerDir, { recursive: true });
     fs.writeFileSync(path.join(markerDir, "last-audit.json"), "this is not json");
     const status = aa.getAuditStatus(tmpDir);
@@ -74,9 +74,9 @@ describe("markAuditDone", () => {
   });
 
   it("creates parent directory if missing", () => {
-    expect(fs.existsSync(path.join(tmpDir, "episodic"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "raw"))).toBe(false);
     aa.markAuditDone(tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, "episodic", "maintenance-log", "last-audit.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, "raw", "maintenance-log", "last-audit.json"))).toBe(true);
   });
 
   it("truncates very long summary to 500 chars", () => {

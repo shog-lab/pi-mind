@@ -8,7 +8,7 @@
  * substantive work in the current session).
  *
  * State lives in a single marker file so the check is fast and atomic:
- *   $PI_MIND_DIR/episodic/maintenance-log/last-audit.json
+ *   $PI_MIND_DIR/raw/maintenance-log/last-audit.json
  *   { "lastRun": <ms epoch>, "summary": "<optional one-line>" }
  *
  * Mark-as-done is exposed as a tool the daily-audit skill calls at the end
@@ -26,7 +26,7 @@ interface AuditMarker {
 }
 
 function markerPath(piMindDir: string): string {
-  return join(piMindDir, "episodic", "maintenance-log", "last-audit.json");
+  return join(piMindDir, "raw", "maintenance-log", "last-audit.json");
 }
 
 export function readMarker(piMindDir: string): AuditMarker | null {

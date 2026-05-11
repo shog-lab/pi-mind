@@ -4,7 +4,7 @@ This repo houses two independent npm packages that compose into a self-evolving 
 
 | Package | Published as | Role |
 |---|---|---|
-| [`packages/memory`](packages/memory/) | `pi-mind` | Persistent memory + self-evolution (episodic / knowledge / graph layers) |
+| [`packages/memory`](packages/memory/) | `pi-mind` | Persistent memory + self-evolution (raw / knowledge / graph layers) |
 | [`packages/toolkit`](packages/toolkit/) | `pi-toolkit` | Common pi tools — image generation (Jimeng), web search and image understanding (mmx), browser automation (agent-browser) |
 
 Each package versions independently. Compose freely: install only what you need.

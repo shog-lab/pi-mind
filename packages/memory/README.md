@@ -16,7 +16,7 @@ Memory lives in `$PI_MIND_DIR` (default `./.pi-mind` in the current repo) with t
 
 ```
 .pi-mind/
-├── episodic/    — what happened
+├── raw/    — what happened
 │   ├── sessions/      conversation transcripts
 │   ├── observations/  things the agent noticed during work
 │   ├── compaction/    auto-saved conversation summaries
@@ -27,7 +27,7 @@ Memory lives in `$PI_MIND_DIR` (default `./.pi-mind` in the current repo) with t
     └── (managed by KG module from frontmatter `triples` fields)
 ```
 
-Three layers map to cognitive science: **episodic** (raw events), **semantic** (compiled knowledge), **relational** (entity-relationship graph). Markdown wiki is one rendering of `knowledge/`, not memory itself — episodic is real append-only logs; graph is structured triples.
+Three layers map to cognitive science: **raw** (raw events), **semantic** (compiled knowledge), **relational** (entity-relationship graph). Markdown wiki is one rendering of `knowledge/`, not memory itself — raw is real append-only logs; graph is structured triples.
 
 ## Install
 
@@ -35,7 +35,7 @@ Three layers map to cognitive science: **episodic** (raw events), **semantic** (
 npm i -D pi-mind
 ```
 
-`postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `episodic/ knowledge/ graph/` directories. Idempotent — re-running `npm install` is safe.
+`postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/ graph/` directories. Idempotent — re-running `npm install` is safe.
 
 `pi-mind` declares `@earendil-works/pi-coding-agent` as a peer dependency. Make sure `pi` is on `PATH` (typically via `npm i -g @earendil-works/pi-coding-agent`).
 
@@ -131,17 +131,17 @@ Both are designed to be triggered by **OS cron**, not by an in-process scheduler
 
 ## Composing with other pi packages
 
-pi-mind defines the structure of `$PI_MIND_DIR/episodic/` but **does not own it**. Other packages can write to their own subdirectories:
+pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Other packages can write to their own subdirectories:
 
 ```
-.pi-mind/episodic/
+.pi-mind/raw/
 ├── sessions/         pi-mind: pi session archives
 ├── compaction/       pi-mind: auto summaries
 ├── observations/     pi-mind: agent's own notes
 └── browser/          pi-chrome: browser task outcomes (if installed)
 ```
 
-`daily-audit` scans the entire `episodic/` tree, so anything any package writes there gets reviewed automatically. Convention: each package writes only to its own subdirectory and uses the same frontmatter schema. See [`pi-chrome`](https://github.com/shog-lab/pi-chrome) for an example sibling package.
+`daily-audit` scans the entire `raw/` tree, so anything any package writes there gets reviewed automatically. Convention: each package writes only to its own subdirectory and uses the same frontmatter schema. See [`pi-chrome`](https://github.com/shog-lab/pi-chrome) for an example sibling package.
 
 ## Benchmarks
 

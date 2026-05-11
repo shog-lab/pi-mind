@@ -39,7 +39,7 @@ Detailed flow: `../wiki-lint/SKILL.md`.
 
 ```bash
 DATE=$(date +%Y-%m-%d)
-LOG="$PI_MIND_DIR/episodic/maintenance-log/${DATE}.jsonl"
+LOG="$PI_MIND_DIR/raw/maintenance-log/${DATE}.jsonl"
 grep "feedback-llm" "$LOG" 2>/dev/null | head -3
 ```
 
@@ -49,10 +49,10 @@ Each entry: `{shouldRemember: true | false | null}`.
 
 ### 3. Archive old compactions
 
-Move compaction files older than 14 days to `episodic/compaction/archived/`:
+Move compaction files older than 14 days to `raw/compaction/archived/`:
 
 ```bash
-COMPACTION_DIR="$PI_MIND_DIR/episodic/compaction"
+COMPACTION_DIR="$PI_MIND_DIR/raw/compaction"
 ARCHIVE_DIR="$COMPACTION_DIR/archived"
 mkdir -p "$ARCHIVE_DIR"
 find "$COMPACTION_DIR" -maxdepth 1 -type f -name '*.md' -mtime +14 -exec mv {} "$ARCHIVE_DIR/" \;

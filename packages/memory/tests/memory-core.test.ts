@@ -127,7 +127,7 @@ describe('MemoryCore', () => {
   describe('constructor', () => {
     it('creates wiki/ and raw/ directories', async () => {
       expect(fs.existsSync(path.join(tmpDir, 'knowledge'))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, 'episodic'))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'raw'))).toBe(true);
       // wiki/compaction/ is created on first saveMemory('compaction'), not by constructor
     });
 
@@ -139,7 +139,7 @@ describe('MemoryCore', () => {
   describe('saveMemory', () => {
     it('saves compaction to raw/compaction/', async () => {
       const fp = await mc.saveMemory('compaction', 'Summary text');
-      expect(fp).toContain('episodic/compaction/');
+      expect(fp).toContain('raw/compaction/');
       expect(fs.existsSync(fp)).toBe(true);
     });
 
@@ -171,7 +171,7 @@ describe('MemoryCore', () => {
     });
 
     it('indexes files from raw/ too', async () => {
-      const rawPath = path.join(tmpDir, 'episodic', 'source.md');
+      const rawPath = path.join(tmpDir, 'raw', 'source.md');
       fs.mkdirSync(path.dirname(rawPath), { recursive: true });
       fs.writeFileSync(
         rawPath,

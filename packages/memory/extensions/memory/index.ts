@@ -141,9 +141,9 @@ function getSessionsDir(): string {
   return join(process.env.HOME ?? ".", ".pi", "agent", "sessions");
 }
 
-/** Where we archive sessions into pi-mind's episodic store. */
+/** Where we archive sessions into pi-mind's raw store. */
 function getArchiveSessionsDir(): string {
-  return join(PI_MIND_DIR, "episodic", "sessions");
+  return join(PI_MIND_DIR, "raw", "sessions");
 }
 
 /** Recursively copy .jsonl files from src to dest, preserving directory structure */
@@ -196,7 +196,7 @@ function getCore(): MemoryCore {
 // --- Maintenance log ---
 
 function logMaintenance(action: string, detail: Record<string, unknown>): void {
-  const logDir = join(PI_MIND_DIR, "episodic", "maintenance-log");
+  const logDir = join(PI_MIND_DIR, "raw", "maintenance-log");
   try {
     mkdirSync(logDir, { recursive: true });
     const date = new Date().toISOString().slice(0, 10);
@@ -219,7 +219,7 @@ let _spawnId = 0;
  */
 function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void {
   const id = `${Date.now()}-${String(_spawnId++).padStart(4, "0")}`;
-  const logDir = join(PI_MIND_DIR, "episodic", "maintenance-log");
+  const logDir = join(PI_MIND_DIR, "raw", "maintenance-log");
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `${id}.log`);
   const ackPath = join(logDir, `${id}.done`);
@@ -238,7 +238,7 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
         "",
         "## project — Project code, architecture, or technical decisions",
         "When: The content is about project structure, code, files, or how the system works",
-        'Examples: "代码迁移到了 episodic/compaction/" / "项目用 Docker 管理"',
+        'Examples: "代码迁移到了 raw/compaction/" / "项目用 Docker 管理"',
         "",
         "## agent-feedback — Agent's own suggestions, decisions, or reflections",
         "When: The agent recommends something, decides an approach, or reflects on what was done",
@@ -300,7 +300,7 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
 
 /** Read today + yesterday jsonl to recover pending spawns after restart */
 function recoverPendingSpawns(core: MemoryCore): void {
-  const logDir = join(PI_MIND_DIR, "episodic", "maintenance-log");
+  const logDir = join(PI_MIND_DIR, "raw", "maintenance-log");
   if (!existsSync(logDir)) return;
 
   const now = new Date();
@@ -674,7 +674,7 @@ export default function memExtension(pi: ExtensionAPI) {
 
 function detectSkillPattern(): { goal: string; summaries: string } | null {
   try {
-    const compactionDir = join(PI_MIND_DIR, "episodic", "compaction");
+    const compactionDir = join(PI_MIND_DIR, "raw", "compaction");
     if (!existsSync(compactionDir)) return null;
     const files = readdirSync(compactionDir).filter((f) => f.endsWith(".md"));
     if (files.length < getCore().config.spawn.recentCompactionsToScan) return null;
