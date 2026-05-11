@@ -28,6 +28,7 @@ import { catchError, filter, map, take, takeUntil } from "rxjs/operators";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { cancel$ } from "../runtime/cancel.js";
+import { ensureCdpAttached } from "../runtime/cdp-lifecycle.js";
 import { emit, on, type BrowserEvent } from "../runtime/event-bus.js";
 
 const WatchUntilParams = Type.Object({
@@ -99,6 +100,19 @@ export function registerWatchUntil(pi: ExtensionAPI): void {
     async execute(_id: string, params: Static<typeof WatchUntilParams>) {
       const totalTimeout = params.timeoutMs ?? 30000;
       emit({ type: "watch_until.start", data: params });
+
+      // Lazy CDP attach — fire-and-forget so the bus subscription below is
+      // wired up immediately. Don't await: ensureCdpAttached() takes up to
+      // 3s to fail if no daemon, and we don't want to miss events emitted
+      // during that window (especially in tests that emit() directly).
+      //
+      // - Daemon running: attach succeeds, bridge feeds events into bus
+      // - No daemon: attach fails silently, watch_until eventually times out
+      //   (or matches events emitted by other code paths, e.g. tests)
+      ensureCdpAttached().catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        emit({ type: "watch_until.cdp_unavailable", data: { message: msg } });
+      });
 
       const flow$ = on(params.event).pipe(
         filter((e: BrowserEvent) => matches(params, e.data)),
