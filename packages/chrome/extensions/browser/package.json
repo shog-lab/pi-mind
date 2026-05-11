@@ -1,0 +1,13 @@
+{
+  "name": "@pi-chrome/browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser extension for pi-coding-agent — task-level tools backed by agent-browser + RxJS runtime.",
+  "type": "module",
+  "main": "index.ts",
+  "dependencies": {
+    "agent-browser": "^0.27.0",
+    "rxjs": "^7.8.1",
+    "@sinclair/typebox": "^0.34.0"
+  }
+}

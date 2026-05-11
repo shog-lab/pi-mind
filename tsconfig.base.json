@@ -12,7 +12,5 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
-  },
-  "include": ["extensions/**/*", "lib/**/*", "scripts/**/*"],
-  "exclude": ["node_modules"]
+  }
 }

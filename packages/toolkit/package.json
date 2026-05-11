@@ -1,0 +1,39 @@
+{
+  "name": "pi-toolkit",
+  "version": "0.1.0",
+  "description": "Common pi-coding-agent extensions: image generation (Jimeng), web search (mmx), image understanding (mmx vision).",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepare": "tsc",
+    "postinstall": "node bin/init.js"
+  },
+  "bin": {
+    "pi-toolkit-init": "bin/init.js"
+  },
+  "files": [
+    "extensions/**/*.js",
+    "extensions/**/*.d.ts",
+    "extensions/**/*.js.map",
+    "extensions/**/package.json",
+    "bin/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "@volcengine/openapi": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
