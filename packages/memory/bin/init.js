@@ -3,7 +3,7 @@
  * pi-mind postinstall: wire the package into the host repo's .pi/ tree.
  *
  * Creates symlinks (so npm update keeps the agent in sync):
- *   .pi/extensions/<name>  →  node_modules/pi-mind/extensions/<name>
+ *   .pi/extensions/<name>  →  node_modules/pi-mind/dist/extensions/<name>
  *   .pi/skills/<name>      →  node_modules/pi-mind/skills/<name>
  *
  * Creates fresh directories for the three memory layers (only if missing):
@@ -100,8 +100,8 @@ function linkInto(srcDir, destDir) {
   }
 }
 
-// 1. Symlink extensions and skills into .pi/
-linkInto(join(PKG_ROOT, "extensions"), join(HOST_ROOT, ".pi", "extensions"));
+// 1. Symlink extensions (compiled .js, lives in dist/) and skills (markdown, lives in source) into .pi/
+linkInto(join(PKG_ROOT, "dist", "extensions"), join(HOST_ROOT, ".pi", "extensions"));
 linkInto(join(PKG_ROOT, "skills"), join(HOST_ROOT, ".pi", "skills"));
 
 // 2. Create memory layer directories under .pi-mind/

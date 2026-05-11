@@ -3,7 +3,7 @@
  * pi-chrome postinstall: wire the package into the host repo's .pi/ tree.
  *
  * Creates symlinks (so npm update keeps the agent in sync):
- *   .pi/extensions/browser  →  node_modules/pi-chrome/extensions/browser
+ *   .pi/extensions/browser  →  node_modules/pi-chrome/dist/extensions/browser
  *   .pi/skills/<name>       →  node_modules/pi-chrome/skills/<name>
  *
  * Idempotent. User-customized files are never overwritten.
@@ -88,7 +88,10 @@ function linkInto(srcDir, destDir) {
   }
 }
 
-linkInto(join(PKG_ROOT, "extensions"), join(HOST_ROOT, ".pi", "extensions"));
+// Extensions are TypeScript-compiled — symlink to dist/extensions where pi
+// loads from .js (no .ts source siblings to confuse it).
+// Skills are markdown — stay in source skills/.
+linkInto(join(PKG_ROOT, "dist", "extensions"), join(HOST_ROOT, ".pi", "extensions"));
 linkInto(join(PKG_ROOT, "skills"), join(HOST_ROOT, ".pi", "skills"));
 
 console.log(`[pi-chrome] ready. Run 'pi' in ${HOST_ROOT} to use the browser tools.`);

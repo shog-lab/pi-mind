@@ -5,12 +5,12 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
     "typecheck": "tsc --noEmit",
     "lint:wiki": "tsx scripts/wiki-lint.ts",
     "verify-feedback": "tsx scripts/verify-feedback.ts",
     "test": "vitest run",
-    "prepare": "tsc",
+    "prepare": "npm run build",
     "postinstall": "node bin/init.js"
   },
   "bin": {
@@ -18,19 +18,12 @@
     "pi-mind-lint": "bin/lint.js"
   },
   "files": [
-    "extensions/**/*.js",
-    "extensions/**/*.d.ts",
-    "extensions/**/*.js.map",
-    "extensions/**/package.json",
-    "lib/**/*.js",
-    "lib/**/*.d.ts",
-    "lib/**/*.js.map",
-    "scripts/**/*.js",
-    "scripts/**/*.d.ts",
-    "scripts/**/*.js.map",
+    "dist/**",
     "skills/**",
     "bin/**/*.js",
-    "system-prompt.md"
+    "system-prompt.md",
+    "README.md",
+    "LICENSE"
   ],
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0"

@@ -4,19 +4,7 @@ node_modules/
 .env
 *.tgz
 
-# tsc build output (compiled in-place; ship via npm but don't commit)
-**/extensions/**/*.js
-**/extensions/**/*.d.ts
-**/extensions/**/*.js.map
-**/extensions/**/*.d.ts.map
-**/lib/**/*.js
-**/lib/**/*.d.ts
-**/lib/**/*.js.map
-**/lib/**/*.d.ts.map
-**/scripts/**/*.js
-**/scripts/**/*.d.ts
-**/scripts/**/*.js.map
-**/scripts/**/*.d.ts.map
+# tsc build output now lives under dist/ (no in-place compile)
 **/dist/
 
 # Local DBs and locks

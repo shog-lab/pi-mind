@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * pi-mind-lint — runs scripts/wiki-lint.ts via tsx.
+ * pi-mind-lint — runs the compiled wiki-lint script.
  * Forwards all CLI args.
  */
 
@@ -11,9 +11,9 @@ import { realpathSync } from "node:fs";
 
 const here = realpathSync(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(dirname(here), "..");
-const script = join(PKG_ROOT, "scripts", "wiki-lint.ts");
+const script = join(PKG_ROOT, "dist", "scripts", "wiki-lint.js");
 
-const result = spawnSync("npx", ["-y", "tsx", script, ...process.argv.slice(2)], {
+const result = spawnSync("node", [script, ...process.argv.slice(2)], {
   stdio: "inherit",
   cwd: process.cwd(),
 });

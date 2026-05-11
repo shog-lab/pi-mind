@@ -76,6 +76,8 @@ function linkInto(srcDir, destDir) {
   }
 }
 
-linkInto(join(PKG_ROOT, "extensions"), join(HOST_ROOT, ".pi", "extensions"));
+// Extensions are TypeScript-compiled — symlink to dist/extensions where pi
+// loads from .js (no .ts source siblings to confuse it).
+linkInto(join(PKG_ROOT, "dist", "extensions"), join(HOST_ROOT, ".pi", "extensions"));
 
 console.log(`[pi-toolkit] ready.`);

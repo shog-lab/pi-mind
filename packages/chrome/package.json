@@ -5,25 +5,21 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepare": "tsc",
+    "prepare": "npm run build",
     "postinstall": "node bin/init.js"
   },
   "bin": {
     "pi-chrome-init": "bin/init.js"
   },
   "files": [
-    "extensions/**/*.js",
-    "extensions/**/*.d.ts",
-    "extensions/**/*.js.map",
-    "extensions/**/package.json",
-    "lib/**/*.js",
-    "lib/**/*.d.ts",
-    "lib/**/*.js.map",
+    "dist/**",
     "skills/**",
     "bin/**/*.js",
+    "README.md",
+    "LICENSE",
     "CHANGELOG.md"
   ],
   "peerDependencies": {
