@@ -1,0 +1,44 @@
+{
+  "name": "pi-goals",
+  "version": "0.1.0",
+  "description": "Ralph-style autonomous goal execution for pi-coding-agent: /goal command with PRD loop and self-verification.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepare": "npm run build",
+    "postinstall": "node bin/init.js"
+  },
+  "bin": {
+    "pi-goals-init": "bin/init.js"
+  },
+  "files": [
+    "dist/**",
+    "skills/**",
+    "bin/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "pi-mind": "^0.1.0"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "better-sqlite3": "^11.8.1",
+    "proper-lockfile": "^4.1.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
