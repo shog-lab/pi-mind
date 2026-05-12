@@ -8,7 +8,7 @@
   "workspaces": [
     "packages/memory",
     "packages/toolkit",
-    "packages/goals"
+    "packages/ralph"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

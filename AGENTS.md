@@ -10,7 +10,7 @@ This document provides a guide for AI agents working in this repository.
 |---|---|---|
 | [`packages/memory`](packages/memory/) | `pi-mind` | Persistent memory + self-evolution (raw / knowledge / graph layers) |
 | [`packages/toolkit`](packages/toolkit/) | `pi-toolkit` | Common tools: image generation, web search, browser automation |
-| [`packages/goals`](packages/goals/) | `pi-goals` | Ralph-style autonomous goal execution with PRD loop |
+| [`packages/ralph`](packages/ralph/) | `pi-goals` | Ralph-style autonomous goal execution with PRD loop |
 
 ## Development Commands
 
@@ -32,7 +32,7 @@ Watch mode for active development:
 
 ```bash
 npx tsc -w -p packages/memory    # Watch memory package
-npx tsc -w -p packages/goals    # Watch goals package
+npx tsc -w -p packages/ralph    # Watch goals package
 ```
 
 ## Loaded Extensions & Skills
@@ -45,7 +45,7 @@ When running `pi` in this repo, the following are auto-loaded from `.pi/`:
 |---|---|---|
 | `memory` | `packages/memory/dist/extensions/memory/` | Three-layer memory system (raw/knowledge/graph) |
 | `subagent` | `packages/memory/dist/extensions/subagent/` | Spawn focused sub-agents for isolated tasks |
-| `goals` | `packages/goals/dist/extensions/goals/` | `/goal` command + goal management tools |
+| `goals` | `packages/ralph/dist/extensions/goals/` | `/goal` command + goal management tools |
 | `jimeng` | `packages/toolkit/dist/extensions/jimeng/` | Volcengine Jimeng T2I image generation |
 | `web_search` | `packages/toolkit/dist/extensions/web_search/` | Web search via mmx CLI |
 | `understand_image` | `packages/toolkit/dist/extensions/understand_image/` | Image understanding via mmx vision |
@@ -58,8 +58,8 @@ When running `pi` in this repo, the following are auto-loaded from `.pi/`:
 | `wiki-lint` | `packages/memory/skills/wiki-lint/` | Schema validation & auto-fix |
 | `scheduling` | `packages/memory/skills/scheduling/` | Cron job setup helper |
 | `agent-browser` | `node_modules/agent-browser/skills/agent-browser/` | Browser automation |
-| `prd` | `packages/goals/skills/prd/` | Generate Product Requirements Documents |
-| `ralph` | `packages/goals/skills/ralph/` | Convert markdown PRD to prd.json format |
+| `prd` | `packages/ralph/skills/prd/` | Generate Product Requirements Documents |
+| `ralph` | `packages/ralph/skills/ralph/` | Convert markdown PRD to prd.json format |
 
 ## Memory Structure
 
@@ -116,13 +116,13 @@ Goals state and logs live in `$PI_GOALS_DIR` (default `./.pi-goals/`):
 | `packages/memory/extensions/subagent/index.ts` | Sub-agent spawn logic |
 | `packages/memory/skills/daily-audit/SKILL.md` | Daily audit skill |
 | `packages/memory/skills/wiki-lint/SKILL.md` | Wiki lint skill |
-| `packages/goals/lib/schema.ts` | Goal & UserStory type definitions |
-| `packages/goals/lib/store.ts` | SQLite-backed goal persistence |
-| `packages/goals/lib/loop.ts` | Ralph-style execution loop with verification |
-| `packages/goals/lib/mutex.ts` | Reentrant file lock for concurrent writes |
-| `packages/goals/extensions/goals/index.ts` | `/goal` command & goal tools |
-| `packages/goals/skills/prd/SKILL.md` | PRD generation skill |
-| `packages/goals/skills/ralph/SKILL.md` | PRD → prd.json conversion skill |
+| `packages/ralph/lib/schema.ts` | Goal & UserStory type definitions |
+| `packages/ralph/lib/store.ts` | SQLite-backed goal persistence |
+| `packages/ralph/lib/loop.ts` | Ralph-style execution loop with verification |
+| `packages/ralph/lib/mutex.ts` | Reentrant file lock for concurrent writes |
+| `packages/ralph/extensions/goals/index.ts` | `/goal` command & goal tools |
+| `packages/ralph/skills/prd/SKILL.md` | PRD generation skill |
+| `packages/ralph/skills/ralph/SKILL.md` | PRD → prd.json conversion skill |
 | `packages/toolkit/extensions/jimeng/` | Image generation extension |
 | `packages/toolkit/extensions/web_search/` | Web search extension |
 | `packages/toolkit/extensions/understand_image/` | Image understanding extension |
