@@ -71,16 +71,22 @@ export type IterationLog = Static<typeof IterationLogSchema>;
 
 // --- Config ---
 
+// --- Config ---
+
+// Tool allowlists for sub-agents.
+// NOTE: Sub-agents run with --no-extensions, so only built-in pi tools are available.
+// Do NOT list extension tools here (e.g., spawn_subagent is not available in sub-agents).
+
 export const GoalsConfigSchema = Type.Object({
   defaultMaxIterations: Type.Number({ default: 10 }),
   defaultTokenBudget: Type.Optional(Type.Number()),
   verificationTools: Type.Array(Type.String(), {
     default: ["Bash", "Read", "Grep", "Find"],
-    description: "Tools available to verification sub-agent"
+    description: "Tools available to verification sub-agent (via --tools flag)"
   }),
   executionTools: Type.Array(Type.String(), {
-    default: ["Bash", "Read", "Write", "Edit", "Grep", "Find", "spawn_subagent"],
-    description: "Tools available to execution sub-agent"
+    default: ["Bash", "Read", "Write", "Edit", "Grep", "Find"],
+    description: "Tools available to execution sub-agent (via --tools flag)"
   }),
 });
 
@@ -90,7 +96,7 @@ export const DEFAULT_CONFIG: GoalsConfig = {
   defaultMaxIterations: 10,
   defaultTokenBudget: undefined,
   verificationTools: ["Bash", "Read", "Grep", "Find"],
-  executionTools: ["Bash", "Read", "Write", "Edit", "Grep", "Find", "spawn_subagent"],
+  executionTools: ["Bash", "Read", "Write", "Edit", "Grep", "Find"],
 };
 
 // --- PRD.json structure (from Ralph) ---

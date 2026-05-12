@@ -16,10 +16,10 @@ import { withGroupLock } from "./mutex.js";
 
 // --- Directory resolution ---
 
-/** Resolve PI_GOALS_DIR — defaults to $PI_MIND_DIR/.go (sibling to pi-mind) */
+/** Resolve PI_GOALS_DIR — defaults to $PI_MIND_DIR/../.pi-goals (sibling to pi-mind) */
 export function resolveGoalsDir(): string {
   const piMindDir = process.env.PI_MIND_DIR || join(process.cwd(), ".pi-mind");
-  // Sibling to pi-mind: ./.pi-mind → ./pi-goals
+  // Sibling to pi-mind: ./.pi-mind → ../.pi-goals (note leading dot)
   const defaultDir = join(dirname(resolve(piMindDir)), ".pi-goals");
   return process.env.PI_GOALS_DIR || defaultDir;
 }

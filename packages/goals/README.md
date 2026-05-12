@@ -2,7 +2,7 @@
 
 **Ralph-style autonomous goal execution for [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent).**
 
-`/goal` command with PRD loop, isolated self-verification, and progress tracking.
+`goal` tool with PRD loop, isolated self-verification, and progress tracking.
 
 ## Quickstart
 
@@ -17,24 +17,24 @@ pi -p "use prd skill and create a PRD for login feature"
 pi -p "use ralph skill and convert tasks/prd-login.md to prd.json"
 
 # Run the goal loop
-pi -p "/goal --from prd.json"
+pi -p "goal --from prd.json"
 ```
 
 Or without PRD (single story):
 
 ```bash
-pi -p "/goal 实现用户登录功能"
+pi -p "goal 实现用户登录功能"
 ```
 
 ## Architecture
 
 ```
-/goal command
+goal tool (tool call, not slash command)
     │
-    ├── [Execution sub-agent] ← spawn_subagent, full tools
+    ├── [Execution sub-agent] ← spawn via pi, full tools via --tools flag
     │         ↓ implements story
     │
-    ├── [Verification sub-agent] ← spawn_subagent --restricted, checks evidence
+    ├── [Verification sub-agent] ← spawn via pi, restricted tools via --tools flag
     │         ↓ returns { passes: bool, evidence, reasons }
     │
     └── [Update prd.json / iteration log]

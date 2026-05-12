@@ -1,13 +1,13 @@
 /**
  * Goal Loop — Ralph-style autonomous execution with self-verification.
- * 
+ *
  * Architecture:
  *   Main pi (goals extension) owns state machine
  *   Execution sub-agent: implements the story (full tools)
  *   Verification sub-agent: checks evidence against criteria (restricted tools)
- * 
- * Isolation: Both sub-agents run with --no-extensions and a minimal tool set.
- * The goals extension injects the goal context via --append-system-prompt.
+ *
+ * Sub-agents run with --no-extensions and --tools allowlist.
+ * The goals extension injects goal context via --append-system-prompt.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -106,43 +106,18 @@ Do NOT return anything else. Only the JSON object.
 Current directory: {cwd}
 `;
 
-const BUDGET_LIMITED_PROMPT = `
-The active thread goal has reached its token budget.
-
-The objective: {objective}
-
-Budget exhausted. Wrap up this turn:
-- Summarize useful progress made
-- Identify remaining work or blockers
-- Leave the user with a clear next step
-
-Do NOT start new substantive work.
-`;
-
-const CONTINUATION_PROMPT = `
-Continue working toward the active thread goal.
-
-Objective: {objective}
-
-Current iteration: {currentIteration}/{maxIterations}
-
-{progressLog}
-
-## Instructions
-- Pick up where the previous iteration left off
-- Verify the goal is still not complete
-- Make concrete progress toward the requested end state
-- Do NOT redefine success around a smaller or easier task
-
-If all stories now have \`passes: true\`, output:
-<promise>COMPLETE</promise>
-
-Current directory: {cwd}
-`;
+// Default tool allowlists (used when config doesn't provide them)
+const DEFAULT_EXECUTION_TOOLS = ["Bash", "Read", "Write", "Edit", "Grep", "Find"];
+const DEFAULT_VERIFICATION_TOOLS = ["Bash", "Read", "Grep", "Find"];
 
 // --- Progress log helpers ---
 
-function loadProgressLog(goal: Goal): string {
+// progress.txt is shared across ALL goals in the goals dir.
+// For goal-specific logs, use episodic/ralph/iteration-*.jsonl instead.
+// The loop writes to global progress.txt (for cross-goal learnings) and
+// per-goal progress files (to avoid pollution). loadProgressLog only reads
+// the global one if it exists (for backward compat when loading goals from DB).
+function loadProgressLog(_goal: Goal): string {
   const logPath = join(resolveGoalsDir(), "progress.txt");
   if (existsSync(logPath)) {
     try {
@@ -153,8 +128,13 @@ function loadProgressLog(goal: Goal): string {
 }
 
 function appendProgress(goal: Goal, entry: string): void {
-  const logPath = join(resolveGoalsDir(), "progress.txt");
-  appendFileSync(logPath, `\n${entry}\n---\n`);
+  // Write to goal-specific progress file to avoid cross-goal pollution (issue #9)
+  const progressPath = join(resolveGoalsDir(), "episodic", "ralph", `progress-${goal.id}.txt`);
+  appendFileSync(progressPath, `\n${entry}\n---\n`);
+
+  // Also append to global progress.txt for backward compat + cross-goal learnings
+  const globalLogPath = join(resolveGoalsDir(), "progress.txt");
+  appendFileSync(globalLogPath, `\n${entry}\n---\n`);
 }
 
 // --- Sub-agent spawn helpers ---
@@ -166,27 +146,39 @@ interface SubAgentResult {
   killed: boolean;
 }
 
+interface SubAgentOptions {
+  timeoutMs?: number;
+  /** Tool allowlist — passed as --tools flag */
+  tools?: string[];
+}
+
 /**
  * Spawn a sub-agent with goals-specific context injection.
- * 
+ *
  * @param cwd Working directory
  * @param systemPrompt Additional system prompt to inject
  * @param userPrompt The user prompt
- * @param restrictedTools If true, only inject restricted verification tools
+ * @param options.tools If provided, restrict to this allowlist via --tools flag
  */
 async function spawnGoalsSubagent(
   cwd: string,
   systemPrompt: string,
   userPrompt: string,
-  options: { timeoutMs?: number; restrictedTools?: boolean } = {}
+  options: SubAgentOptions = {}
 ): Promise<SubAgentResult> {
   const args = [
     "-p",
     "--no-extensions",          // No extensions loaded
     "--model", process.env.MODEL ?? "minimax-cn/MiniMax-M2.7",
     "--append-system-prompt", systemPrompt,
-    userPrompt,
   ];
+
+  // Apply tool allowlist if specified (via --tools flag)
+  if (options.tools && options.tools.length > 0) {
+    args.push("--tools", options.tools.join(","));
+  }
+
+  args.push(userPrompt);
 
   const { timeoutMs = 300_000 } = options;
 
@@ -210,8 +202,27 @@ async function executeStory(
   goal: Goal,
   story: UserStory,
   config: GoalsConfig
-): Promise<{ changedFiles: string[]; output: string }> {
+): Promise<{ changedFiles: string[]; output: string; commitHash?: string }> {
   const progressLog = loadProgressLog(goal);
+
+  // --- Git branch setup ---
+  // Inject git branch creation/switching into the execution prompt (issue #3)
+  let gitSetupBlock = "";
+  if (goal.branchName && goal.branchName !== "ralph/default") {
+    gitSetupBlock = `
+## Git Setup
+Run these commands BEFORE starting work:
+\`\`\`bash
+BRANCH_NAME="${goal.branchName}"
+if ! git rev-parse --verify "$BRANCH_NAME" 2>/dev/null; then
+  git checkout -b "$BRANCH_NAME"
+else
+  git checkout "$BRANCH_NAME"
+fi
+\`\`\`
+`;
+  }
+
   const systemPrompt = [
     "You are Ralph, an autonomous coding agent.",
     "Work on ONE story per iteration.",
@@ -222,18 +233,63 @@ async function executeStory(
     "Branch: " + goal.branchName,
   ].join("\n");
 
-  const prompt = EXECUTION_PROMPT_TEMPLATE
+  // Build the full prompt: git setup + execution template
+  const prompt = gitSetupBlock + EXECUTION_PROMPT_TEMPLATE
     .replace("{progressLog}", progressLog)
     .replace("{storyJson}", JSON.stringify(story, null, 2))
     .replace("{cwd}", goal.cwd)
     .replace("{prdFile}", goal.prdFile || "no prd file");
 
-  const result = await spawnGoalsSubagent(goal.cwd, systemPrompt, prompt);
+  // Pass execution tools via --tools flag (from config) — issue #2 fix
+  const execTools = config.executionTools ?? DEFAULT_EXECUTION_TOOLS;
+  const result = await spawnGoalsSubagent(goal.cwd, systemPrompt, prompt, {
+    tools: execTools,
+  });
 
-  // Parse output for changed files
-  const changedFiles = parseChangedFiles(result.stdout);
+  // Parse output for changed files and commit hash
+  const changedFiles = parseChangedFilesFromGit(result.stdout, goal.cwd);
+  const commitHash = parseCommitHash(result.stdout);
 
-  return { changedFiles, output: result.stdout };
+  return { changedFiles, output: result.stdout, commitHash };
+}
+
+/**
+ * Parse changed files using git diff --name-only (robust, issue #5 fix).
+ * Falls back to regex parsing if git fails.
+ */
+function parseChangedFilesFromGit(stdout: string, cwd: string): string[] {
+  // First try the git diff approach (reliable)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execSync } = require("node:child_process") as typeof import("node:child_process");
+    const files = (execSync("git diff --name-only", {
+      cwd,
+      encoding: "utf-8" as const,
+      timeout: 5000,
+    } as import("node:child_process").ExecSyncOptionsWithStringEncoding) as string)
+      .split("\n")
+      .map((f: string) => f.trim())
+      .filter(Boolean);
+    if (files.length > 0) return files;
+  } catch {}
+
+  // Fallback to regex parsing (fragile but better than nothing)
+  return parseChangedFilesFallback(stdout);
+}
+
+/**
+ * @deprecated Use parseChangedFilesFromGit() instead — this regex is fragile.
+ * Kept only as fallback.
+ */
+function parseChangedFilesFallback(output: string): string[] {
+  const match = output.match(/Changed files:\s*\[(.*?)\]/);
+  if (!match) return [];
+  return match[1].split(",").map((f: string) => f.trim()).filter(Boolean);
+}
+
+function parseCommitHash(output: string): string | undefined {
+  const match = output.match(/Commit:\s*([a-f0-9]+)/i);
+  return match ? match[1] : undefined;
 }
 
 async function verifyStory(
@@ -242,23 +298,46 @@ async function verifyStory(
   changedFiles: string[],
   config: GoalsConfig
 ): Promise<{ passes: boolean; evidence: Record<string, string>; incompleteReasons: string[] }> {
+  // Verification tools are restricted to read-only + browser inspection (issue #1 fix)
+  const verifyTools = config.verificationTools ?? DEFAULT_VERIFICATION_TOOLS;
+
+  // For verification, always re-discover changed files via git diff (issue #6 fix)
+  // Don't trust the execution agent's reported file list
+  let verifiedFiles: string[];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { execSync } = require("node:child_process") as typeof import("node:child_process");
+    verifiedFiles = (execSync("git diff --name-only", {
+      cwd: goal.cwd,
+      encoding: "utf-8" as const,
+      timeout: 5000,
+    } as import("node:child_process").ExecSyncOptionsWithStringEncoding) as string)
+      .split("\n")
+      .map((f: string) => f.trim())
+      .filter(Boolean);
+  } catch {
+    verifiedFiles = changedFiles; // fallback to reported list if git fails
+  }
+
   const systemPrompt = [
     "You are a verification agent.",
     "Your ONLY job is to verify completion.",
     "You CANNOT modify any files.",
     "You MUST check actual evidence.",
-    "Tools available: Read, Bash, Grep, Find, understand_image, agent-browser.",
+    `Tools available: ${verifyTools.join(", ")}.`,
     "",
-    `Changed files: ${changedFiles.join(", ") || "none"}`,
+    `Changed files (from git diff): ${verifiedFiles.join(", ") || "none"}`,
   ].join("\n");
 
   const prompt = VERIFICATION_PROMPT_TEMPLATE
     .replace("{storyJson}", JSON.stringify(story, null, 2))
-    .replace("{changedFiles}", changedFiles.join(", ") || "none")
+    .replace("{changedFiles}", verifiedFiles.join(", ") || "none")
     .replace("{acceptanceCriteriaFormatted}", story.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n"))
     .replace("{cwd}", goal.cwd);
 
-  const result = await spawnGoalsSubagent(goal.cwd, systemPrompt, prompt, { restrictedTools: true });
+  const result = await spawnGoalsSubagent(goal.cwd, systemPrompt, prompt, {
+    tools: verifyTools,
+  });
 
   try {
     // Extract JSON from output (might be wrapped in markdown)
@@ -283,11 +362,14 @@ async function verifyStory(
 
 // --- Parsing helpers ---
 
+/**
+ * @deprecated Use parseChangedFilesFromGit() instead — this regex is fragile.
+ * Kept only as fallback.
+ */
 function parseChangedFiles(output: string): string[] {
   const match = output.match(/Changed files:\s*\[(.*?)\]/);
   if (!match) return [];
-  const files = match[1].split(",").map((f) => f.trim()).filter(Boolean);
-  return files;
+  return match[1].split(",").map((f) => f.trim()).filter(Boolean);
 }
 
 function parseCompletionSignal(output: string): boolean {
@@ -306,17 +388,15 @@ export interface LoopResult {
 
 /**
  * Run the goal loop until completion or max iterations.
- * 
- * This is called by the goals extension when /goal is invoked.
- * The main pi process runs this loop synchronously.
+ *
+ * This is called by the goals extension when goal tool is invoked.
+ * The main pi process runs this loop synchronously (issue #7 — async but blocking).
  */
 export async function runGoalLoop(
   goal: Goal,
   store: GoalStore,
   config: GoalsConfig
 ): Promise<LoopResult> {
-  const startedAt = new Date().toISOString();
-
   // Ensure we're active
   store.transitionTo(goal.id, "active");
 
@@ -347,6 +427,18 @@ async function runLoopInternal(
   while (goal.currentIteration < goal.maxIterations) {
     goal.currentIteration++;
     store.updateGoal(goal.id, { currentIteration: goal.currentIteration });
+
+    // --- Check pause state (issue #10 fix) ---
+    const currentGoal = store.getGoal(goal.id);
+    if (currentGoal && currentGoal.state === "paused") {
+      return {
+        goalId: goal.id,
+        completed: false,
+        finalState: "paused",
+        iterationsRun: goal.currentIteration,
+        reason: "Goal paused by user",
+      };
+    }
 
     // --- Select next story ---
     let story: UserStory | null = null;
@@ -381,8 +473,36 @@ async function runLoopInternal(
       console.error(`[goals] Execution failed for ${story.id}:`, err);
     }
 
+    // --- Token budget accounting (issue #4 fix) ---
+    // Approximate tokens from output length (4 chars per token)
+    // Note: this undercounts since it only counts execution output.
+    // A more accurate approach would parse model usage from pi's internal tracking.
+    const approxTokens = Math.ceil(executionOutput.length / 4);
+    goal.tokensUsed += approxTokens;
+    store.updateGoal(goal.id, { tokensUsed: goal.tokensUsed });
+
+    // --- Check budget before proceeding to verification ---
+    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
+      store.transitionTo(goal.id, "budget_limited");
+      return {
+        goalId: goal.id,
+        completed: false,
+        finalState: "budget_limited",
+        iterationsRun: goal.currentIteration,
+        reason: "Token budget exhausted",
+      };
+    }
+
     // --- Verification (isolated sub-agent) ---
-    if (changedFiles.length > 0) {
+    // Issue #5 fix: If changedFiles is empty (git diff returned nothing),
+    // verification is impossible — skip and mark failed.
+    if (changedFiles.length === 0) {
+      verificationResult = {
+        passes: false,
+        evidence: { noFilesFound: "No changed files detected via git diff" },
+        incompleteReasons: ["No changed files found — story may not have been implemented"],
+      };
+    } else {
       try {
         verificationResult = await verifyStory(goal, story, changedFiles, config);
       } catch (err) {
@@ -422,7 +542,7 @@ async function runLoopInternal(
     const episodicLogPath = join(episodicDir, `iteration-${String(goal.currentIteration).padStart(3, "0")}.jsonl`);
     writeFileSync(episodicLogPath, JSON.stringify(logEntry) + "\n");
 
-    // Append progress
+    // Append progress (goal-specific + global)
     const progressEntry = `
 ## Iteration ${goal.currentIteration} - ${story.id}
 ${passes ? "✅ PASSED" : "❌ FAILED"}
@@ -446,15 +566,15 @@ ${!passes && verificationResult ? `Evidence: ${JSON.stringify(verificationResult
       };
     }
 
-    // --- Check budget ---
-    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
-      store.transitionTo(goal.id, "budget_limited");
+    // --- Check pause state (before next iteration, issue #10 fix) ---
+    const recheckGoal = store.getGoal(goal.id);
+    if (recheckGoal && recheckGoal.state === "paused") {
       return {
         goalId: goal.id,
         completed: false,
-        finalState: "budget_limited",
+        finalState: "paused",
         iterationsRun: goal.currentIteration,
-        reason: "Token budget exhausted",
+        reason: "Goal paused by user during iteration",
       };
     }
   }

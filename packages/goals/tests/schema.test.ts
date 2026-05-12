@@ -17,10 +17,13 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.verificationTools).toContain("Find");
   });
 
-  it("execution tools include spawn_subagent", () => {
-    expect(DEFAULT_CONFIG.executionTools).toContain("spawn_subagent");
+  it("execution tools are built-in pi tools (no spawn_subagent — sub-agents run with --no-extensions)", () => {
+    expect(DEFAULT_CONFIG.executionTools).toContain("Bash");
+    expect(DEFAULT_CONFIG.executionTools).toContain("Read");
     expect(DEFAULT_CONFIG.executionTools).toContain("Write");
     expect(DEFAULT_CONFIG.executionTools).toContain("Edit");
+    // spawn_subagent is NOT available in sub-agents since they use --no-extensions
+    expect(DEFAULT_CONFIG.executionTools).not.toContain("spawn_subagent");
   });
 
   it("verification tools exclude write/edit", () => {
