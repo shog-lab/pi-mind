@@ -11,17 +11,24 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
+import { resolvePiMindDir } from "pi-mind/dist/lib/paths.js";
 import { Goal, GoalState, IterationLog, DEFAULT_CONFIG, type GoalsConfig } from "./schema.js";
 import { withGroupLock } from "./mutex.js";
 
 // --- Directory resolution ---
 
-/** Resolve PI_GOALS_DIR — defaults to $PI_MIND_DIR/../.pi-goals (sibling to pi-mind) */
+/**
+ * Resolve PI_GOALS_DIR — defaults to a sibling of pi-mind's resolved directory.
+ *
+ * Chains off resolvePiMindDir(), so when running in a git worktree both
+ * .pi-mind and .pi-goals route to the main repo root (not the worktree).
+ * Explicit $PI_GOALS_DIR env var always wins.
+ */
 export function resolveGoalsDir(): string {
-  const piMindDir = process.env.PI_MIND_DIR || join(process.cwd(), ".pi-mind");
+  if (process.env.PI_GOALS_DIR) return process.env.PI_GOALS_DIR;
+  const piMindDir = resolvePiMindDir();
   // Sibling to pi-mind: ./.pi-mind → ../.pi-goals (note leading dot)
-  const defaultDir = join(dirname(resolve(piMindDir)), ".pi-goals");
-  return process.env.PI_GOALS_DIR || defaultDir;
+  return join(dirname(resolve(piMindDir)), ".pi-goals");
 }
 
 /** Resolve goals DB path */
@@ -60,6 +67,7 @@ export class GoalStore {
         prdFile TEXT,
         tokensUsed INTEGER NOT NULL DEFAULT 0,
         tokenBudget INTEGER,
+        costUsd REAL NOT NULL DEFAULT 0,
         maxIterations INTEGER NOT NULL DEFAULT 10,
         currentIteration INTEGER NOT NULL DEFAULT 0,
         createdAt TEXT NOT NULL,
@@ -96,6 +104,12 @@ export class GoalStore {
       CREATE INDEX IF NOT EXISTS idx_stories_goalId ON userStories(goalId);
       CREATE INDEX IF NOT EXISTS idx_logs_goalId ON iterationLogs(goalId);
     `);
+
+    // Lightweight migration for DBs created before costUsd was added.
+    // SQLite ALTER TABLE ADD COLUMN is idempotent only via try/catch on "duplicate column".
+    try {
+      this.db.exec(`ALTER TABLE goals ADD COLUMN costUsd REAL NOT NULL DEFAULT 0`);
+    } catch { /* column already exists — migrated */ }
   }
 
   // --- Config ---
@@ -116,12 +130,13 @@ export class GoalStore {
   createGoal(goal: Goal): void {
     const stmt = this.db.prepare(`
       INSERT INTO goals (id, state, objective, branchName, cwd, prdFile,
-        tokensUsed, tokenBudget, maxIterations, currentIteration, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        tokensUsed, tokenBudget, costUsd, maxIterations, currentIteration, createdAt, updatedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       goal.id, goal.state, goal.objective, goal.branchName, goal.cwd, goal.prdFile ?? null,
-      goal.tokensUsed, goal.tokenBudget ?? null, goal.maxIterations, goal.currentIteration,
+      goal.tokensUsed, goal.tokenBudget ?? null, goal.costUsd ?? 0,
+      goal.maxIterations, goal.currentIteration,
       goal.createdAt, goal.updatedAt
     );
 
@@ -153,6 +168,7 @@ export class GoalStore {
       prdFile: row.prdFile as string | undefined,
       tokensUsed: row.tokensUsed as number,
       tokenBudget: row.tokenBudget as number | undefined,
+      costUsd: (row.costUsd as number) ?? 0,
       maxIterations: row.maxIterations as number,
       currentIteration: row.currentIteration as number,
       createdAt: row.createdAt as string,
@@ -168,6 +184,7 @@ export class GoalStore {
 
     if (updates.state !== undefined) { fields.push("state = ?"); values.push(updates.state); }
     if (updates.tokensUsed !== undefined) { fields.push("tokensUsed = ?"); values.push(updates.tokensUsed); }
+    if (updates.costUsd !== undefined) { fields.push("costUsd = ?"); values.push(updates.costUsd); }
     if (updates.currentIteration !== undefined) { fields.push("currentIteration = ?"); values.push(updates.currentIteration); }
     if (updates.completedAt !== undefined) { fields.push("completedAt = ?"); values.push(updates.completedAt); }
 

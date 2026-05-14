@@ -48,7 +48,16 @@ goal tool (tool call, not slash command)
 
 | Extension | Purpose |
 |---|---|
-| `goals` | `/goal` command + `update_goal` / `get_goal` / `list_goals` tools |
+| `goals` | `goal` / `update_goal` / `get_goal` / `list_goals` tools (tool calls, not slash commands) |
+
+## Budget enforcement
+
+Each iteration accumulates real token usage from pi's `--mode json` event stream
+(input/output/cacheRead/cacheWrite + USD cost) into `goal.tokensUsed` and
+`goal.costUsd`. If a goal has `tokenBudget` set and `tokensUsed >= tokenBudget`,
+the goal transitions to `budget_limited` state and the loop halts — no further
+sub-agent spawns. Use `update_goal` to raise the budget and `goal --resume` to
+continue.
 
 ## Skills
 

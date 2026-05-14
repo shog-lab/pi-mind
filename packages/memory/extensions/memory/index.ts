@@ -11,14 +11,18 @@ import { existsSync, readdirSync, copyFileSync, mkdirSync, readFileSync, realpat
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnPi } from "../../lib/spawn-pi.js";
+import { resolvePiMindDir } from "../../lib/paths.js";
 
 import { MemoryCore, parseFrontmatter, TIER_L1, withGroupLock } from "./core.js";
-import { getAuditStatus, markAuditDone, renderAuditNotice } from "./auto-audit.js";
+import { getAuditStatus, markAuditDone, renderAuditNotice, readMarker, summarizeTokensSince, AUDIT_INTERVAL_HOURS } from "./auto-audit.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // --- Config ---
 
-const PI_MIND_DIR = process.env.PI_MIND_DIR || (process.cwd() + "/.pi-mind");
+// Resolved once at module load. Respects $PI_MIND_DIR; otherwise points at the
+// main repo's .pi-mind (via git-common-dir), so worktrees share state and
+// memory survives worktree teardown.
+const PI_MIND_DIR = resolvePiMindDir();
 const DB_PATH = join(PI_MIND_DIR, ".pi-mind-index.db");
 const LEGACY_MEMORY_DIR = join(PI_MIND_DIR, "memory");
 const LEGACY_LLM_WIKI_DIR = join(PI_MIND_DIR, "llm-wiki");
@@ -257,7 +261,7 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
         `${ackPath}`,
         `The JSON line should be: {"type": "<subject>", "knowledgeFile": "<absolute path written>"}`,
         "",
-        `<PI_MIND_DIR> is ${process.env.PI_MIND_DIR || (process.cwd() + "/.pi-mind")}`,
+        `<PI_MIND_DIR> is ${PI_MIND_DIR}`,
       ].join("\n")
     : [
         "You are a skill synthesizer sub-agent.",
@@ -272,7 +276,7 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
         `${ackPath}`,
         `The JSON line should be: {"skillName": "<slug>", "skillFile": "<absolute path written>"}`,
         "",
-        `<PI_MIND_DIR> is ${process.env.PI_MIND_DIR || (process.cwd() + "/.pi-mind")}`,
+        `<PI_MIND_DIR> is ${PI_MIND_DIR}`,
       ].join("\n");
 
   const taskPrompt = taskType === "B"
@@ -283,7 +287,7 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
   logMaintenance(`${taskType}-spawn`, { id, taskType, ackPath, pid: 0 });
 
   spawnPi({
-    cwd: process.env.PI_MIND_DIR || (process.cwd() + "/.pi-mind"),
+    cwd: PI_MIND_DIR,
     args: [
       "-p",
       "--no-extensions",
@@ -293,7 +297,18 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
     ],
     stdoutFile: logPath,
     timeoutMs: 120_000,
-  });
+  }).then((result) => {
+    // Memory tracks token usage of its own L2 spawns for audit. No enforcement here —
+    // ralph owns budget circuit-breaking; memory just records what it spent.
+    if (result.tokens) {
+      logMaintenance(`${taskType}-tokens`, {
+        id,
+        code: result.code,
+        killed: result.killed,
+        tokens: result.tokens,
+      });
+    }
+  }).catch(() => { /* fire-and-forget; sweep handles ack-based outcome */ });
 }
 
 // --- Startup recovery ---
@@ -602,8 +617,17 @@ export default function memExtension(pi: ExtensionAPI) {
 
     const parts: string[] = [];
 
-    // Self-evolution: surface audit-overdue status if applicable
-    const auditNotice = renderAuditNotice(getAuditStatus(PI_MIND_DIR));
+    // Self-evolution: surface audit-overdue status, plus token spend since last audit
+    const auditStatus = getAuditStatus(PI_MIND_DIR);
+    let tokenSummary;
+    if (auditStatus.overdue) {
+      const marker = readMarker(PI_MIND_DIR);
+      // If we've never run an audit, fall back to a 24h window so the number
+      // is bounded and meaningful rather than "all time".
+      const sinceMs = marker?.lastRun ?? (Date.now() - AUDIT_INTERVAL_HOURS * 3600_000);
+      tokenSummary = summarizeTokensSince(PI_MIND_DIR, sinceMs);
+    }
+    const auditNotice = renderAuditNotice(auditStatus, tokenSummary);
     if (auditNotice) parts.push(auditNotice);
 
     // L1: Always inject preferences, decisions, facts

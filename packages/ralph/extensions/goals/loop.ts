@@ -12,7 +12,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { spawnPi } from "pi-mind/dist/lib/spawn-pi.js";
+import { spawnPi, type PiTokens } from "pi-mind/dist/lib/spawn-pi.js";
 import { GoalStore, resolveGoalsDir } from "./store.js";
 import { Goal, GoalState, UserStory, type GoalsConfig } from "./schema.js";
 import { withGroupLock } from "./mutex.js";
@@ -144,6 +144,8 @@ interface SubAgentResult {
   stderr: string;
   code: number;
   killed: boolean;
+  /** Token usage from pi's agent_end event. Undefined if pi didn't complete normally. */
+  tokens?: PiTokens;
 }
 
 interface SubAgentOptions {
@@ -193,35 +195,51 @@ async function spawnGoalsSubagent(
     timeoutMs,
   });
 
-  return { stdout, stderr, code: result.code ?? -1, killed: result.killed };
+  return { stdout, stderr, code: result.code ?? -1, killed: result.killed, tokens: result.tokens };
 }
 
 // --- Execution & Verification ---
+
+/**
+ * Ensure the goal's working tree is on goal.branchName.
+ * Creates the branch if it doesn't exist. Skips if branchName is empty or
+ * the placeholder "ralph/default" (treated as "stay on whatever branch we're on").
+ *
+ * Done in the parent process — relying on the sub-agent to run git checkout
+ * via prompt was fragile (sub-agent could ignore, fail, or run different commands).
+ */
+function ensureBranch(cwd: string, branchName: string | undefined): void {
+  if (!branchName || branchName === "ralph/default") return;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { execSync } = require("node:child_process") as typeof import("node:child_process");
+  const opts: import("node:child_process").ExecSyncOptionsWithStringEncoding = {
+    cwd,
+    encoding: "utf-8",
+    timeout: 5000,
+    stdio: ["ignore", "pipe", "pipe"],
+  };
+  let exists = false;
+  try {
+    execSync(`git rev-parse --verify ${JSON.stringify(branchName)}`, opts);
+    exists = true;
+  } catch { /* branch missing */ }
+  try {
+    if (exists) {
+      execSync(`git checkout ${JSON.stringify(branchName)}`, opts);
+    } else {
+      execSync(`git checkout -b ${JSON.stringify(branchName)}`, opts);
+    }
+  } catch (err) {
+    console.warn(`[goals] failed to checkout branch "${branchName}":`, err instanceof Error ? err.message : err);
+  }
+}
 
 async function executeStory(
   goal: Goal,
   story: UserStory,
   config: GoalsConfig
-): Promise<{ changedFiles: string[]; output: string; commitHash?: string }> {
+): Promise<{ changedFiles: string[]; output: string; commitHash?: string; tokens?: PiTokens }> {
   const progressLog = loadProgressLog(goal);
-
-  // --- Git branch setup ---
-  // Inject git branch creation/switching into the execution prompt (issue #3)
-  let gitSetupBlock = "";
-  if (goal.branchName && goal.branchName !== "ralph/default") {
-    gitSetupBlock = `
-## Git Setup
-Run these commands BEFORE starting work:
-\`\`\`bash
-BRANCH_NAME="${goal.branchName}"
-if ! git rev-parse --verify "$BRANCH_NAME" 2>/dev/null; then
-  git checkout -b "$BRANCH_NAME"
-else
-  git checkout "$BRANCH_NAME"
-fi
-\`\`\`
-`;
-  }
 
   const systemPrompt = [
     "You are Ralph, an autonomous coding agent.",
@@ -233,8 +251,7 @@ fi
     "Branch: " + goal.branchName,
   ].join("\n");
 
-  // Build the full prompt: git setup + execution template
-  const prompt = gitSetupBlock + EXECUTION_PROMPT_TEMPLATE
+  const prompt = EXECUTION_PROMPT_TEMPLATE
     .replace("{progressLog}", progressLog)
     .replace("{storyJson}", JSON.stringify(story, null, 2))
     .replace("{cwd}", goal.cwd)
@@ -250,7 +267,7 @@ fi
   const changedFiles = parseChangedFilesFromGit(result.stdout, goal.cwd);
   const commitHash = parseCommitHash(result.stdout);
 
-  return { changedFiles, output: result.stdout, commitHash };
+  return { changedFiles, output: result.stdout, commitHash, tokens: result.tokens };
 }
 
 /**
@@ -297,7 +314,7 @@ async function verifyStory(
   story: UserStory,
   changedFiles: string[],
   config: GoalsConfig
-): Promise<{ passes: boolean; evidence: Record<string, string>; incompleteReasons: string[] }> {
+): Promise<{ passes: boolean; evidence: Record<string, string>; incompleteReasons: string[]; tokens?: PiTokens }> {
   // Verification tools are restricted to read-only + browser inspection (issue #1 fix)
   const verifyTools = config.verificationTools ?? DEFAULT_VERIFICATION_TOOLS;
 
@@ -348,6 +365,7 @@ async function verifyStory(
         passes: !!parsed.passes,
         evidence: parsed.evidence || {},
         incompleteReasons: parsed.incompleteReasons || [],
+        tokens: result.tokens,
       };
     }
   } catch {}
@@ -357,23 +375,8 @@ async function verifyStory(
     passes: false,
     evidence: { parseError: result.stdout.slice(0, 500) },
     incompleteReasons: ["Could not parse verification output"],
+    tokens: result.tokens,
   };
-}
-
-// --- Parsing helpers ---
-
-/**
- * @deprecated Use parseChangedFilesFromGit() instead — this regex is fragile.
- * Kept only as fallback.
- */
-function parseChangedFiles(output: string): string[] {
-  const match = output.match(/Changed files:\s*\[(.*?)\]/);
-  if (!match) return [];
-  return match[1].split(",").map((f) => f.trim()).filter(Boolean);
-}
-
-function parseCompletionSignal(output: string): boolean {
-  return output.includes("<promise>COMPLETE</promise>");
 }
 
 // --- Main loop ---
@@ -424,6 +427,10 @@ async function runLoopInternal(
   const episodicDir = join(resolveGoalsDir(), "episodic", "ralph");
   mkdirSync(episodicDir, { recursive: true });
 
+  // Ensure the working tree is on goal.branchName before any iteration runs.
+  // (issue #3 — previously delegated to sub-agent via prompt, which was unreliable.)
+  ensureBranch(goal.cwd, goal.branchName);
+
   while (goal.currentIteration < goal.maxIterations) {
     goal.currentIteration++;
     store.updateGoal(goal.id, { currentIteration: goal.currentIteration });
@@ -462,24 +469,28 @@ async function runLoopInternal(
     const iterationStartedAt = new Date().toISOString();
     let executionOutput = "";
     let changedFiles: string[] = [];
-    let verificationResult: { passes: boolean; evidence: Record<string, string>; incompleteReasons: string[] } | null = null;
+    let verificationResult: { passes: boolean; evidence: Record<string, string>; incompleteReasons: string[]; tokens?: PiTokens } | null = null;
+    let executionTokens: PiTokens | undefined;
 
     // --- Execution ---
     try {
       const execResult = await executeStory(goal, story, config);
       executionOutput = execResult.output;
       changedFiles = execResult.changedFiles;
+      executionTokens = execResult.tokens;
     } catch (err) {
       console.error(`[goals] Execution failed for ${story.id}:`, err);
     }
 
-    // --- Token budget accounting (issue #4 fix) ---
-    // Approximate tokens from output length (4 chars per token)
-    // Note: this undercounts since it only counts execution output.
-    // A more accurate approach would parse model usage from pi's internal tracking.
-    const approxTokens = Math.ceil(executionOutput.length / 4);
-    goal.tokensUsed += approxTokens;
-    store.updateGoal(goal.id, { tokensUsed: goal.tokensUsed });
+    // --- Token budget accounting ---
+    // Real per-call usage from pi's agent_end event (via spawn-pi).
+    // If pi crashed mid-call (no agent_end), tokens is undefined → we add 0
+    // and continue. Budget enforcement still works on subsequent successful calls.
+    if (executionTokens) {
+      goal.tokensUsed += executionTokens.totalTokens;
+      goal.costUsd = (goal.costUsd ?? 0) + executionTokens.costUsd;
+      store.updateGoal(goal.id, { tokensUsed: goal.tokensUsed, costUsd: goal.costUsd });
+    }
 
     // --- Check budget before proceeding to verification ---
     if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
@@ -489,7 +500,7 @@ async function runLoopInternal(
         completed: false,
         finalState: "budget_limited",
         iterationsRun: goal.currentIteration,
-        reason: "Token budget exhausted",
+        reason: `Token budget exhausted (used ${goal.tokensUsed} of ${goal.tokenBudget})`,
       };
     }
 
@@ -513,6 +524,19 @@ async function runLoopInternal(
           incompleteReasons: ["Verification sub-agent crashed"],
         };
       }
+    }
+
+    // --- Accumulate verification tokens too ---
+    if (verificationResult?.tokens) {
+      goal.tokensUsed += verificationResult.tokens.totalTokens;
+      goal.costUsd = (goal.costUsd ?? 0) + verificationResult.tokens.costUsd;
+      store.updateGoal(goal.id, { tokensUsed: goal.tokensUsed, costUsd: goal.costUsd });
+    }
+
+    // --- Re-check budget after verification (allow this iteration to finish, halt next) ---
+    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
+      store.transitionTo(goal.id, "budget_limited");
+      // Don't return yet — fall through to log iteration outcome, then halt below
     }
 
     // --- Update PRD / Store ---
@@ -563,6 +587,17 @@ ${!passes && verificationResult ? `Evidence: ${JSON.stringify(verificationResult
         completed: true,
         finalState: "completed",
         iterationsRun: goal.currentIteration,
+      };
+    }
+
+    // --- Halt if budget was hit during verification (deferred from earlier check) ---
+    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
+      return {
+        goalId: goal.id,
+        completed: false,
+        finalState: "budget_limited",
+        iterationsRun: goal.currentIteration,
+        reason: `Token budget exhausted (used ${goal.tokensUsed} of ${goal.tokenBudget})`,
       };
     }
 

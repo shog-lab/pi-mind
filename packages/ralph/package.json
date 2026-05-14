@@ -1,7 +1,7 @@
 {
   "name": "pi-goals",
   "version": "0.1.0",
-  "description": "Ralph-style autonomous goal execution for pi-coding-agent: /goal command with PRD loop and self-verification.",
+  "description": "Ralph-style autonomous goal execution for pi-coding-agent: goal tool with PRD loop and self-verification.",
   "type": "module",
   "license": "MIT",
   "scripts": {

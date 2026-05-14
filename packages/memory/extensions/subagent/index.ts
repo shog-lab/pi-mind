@@ -33,8 +33,8 @@ function getExtensionsDir(): string {
   return join(dirname(here), "..");
 }
 
-function ok(text: string) {
-  return { content: [{ type: "text" as const, text }], details: {} };
+function ok(text: string, details: Record<string, unknown> = {}) {
+  return { content: [{ type: "text" as const, text }], details };
 }
 
 function err(text: string) {
@@ -117,7 +117,7 @@ export default function subagentExtension(pi: ExtensionAPI) {
           .replace(/^.*?---\n/s, "")
           .replace(/^\*\*\(.+\)\*\*\n?/s, "")
           .trim() || "Done.";
-        return ok(text);
+        return ok(text, result.tokens ? { tokens: result.tokens } : {});
       } else {
         return err(stderr || stdout || `Sub-agent exited with code ${result.code}`);
       }

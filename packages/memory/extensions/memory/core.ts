@@ -23,6 +23,7 @@ import {
 } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
+import { resolvePiMindDir } from "../../lib/paths.js";
 import { KnowledgeGraph } from "./knowledge-graph.js";
 import { LEGACY_L1_TYPES, Subject, Tier } from "../../lib/schema.js";
 
@@ -1028,7 +1029,7 @@ export class MemoryCore {
 
 // --- Group-wide lock for multi-pi concurrent write safety ---
 
-const LOCK_DIR = join(process.env.PI_MIND_DIR || (process.cwd() + "/.pi-mind"), ".locks");
+const LOCK_DIR = join(resolvePiMindDir(), ".locks");
 
 // Reentrant lock: reference-counted per lock file.
 // safe-lockfile doesn't support reentry, so we track it ourselves.

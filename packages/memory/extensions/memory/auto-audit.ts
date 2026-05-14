@@ -15,10 +15,65 @@
  * of its workflow; that's the one and only writer of this file.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export const AUDIT_INTERVAL_HOURS = 24;
+
+export interface TokenSummary {
+  totalTokens: number;
+  costUsd: number;
+  callCount: number;
+  /** Earliest entry counted (ms epoch). Useful for "since when" framing. */
+  sinceMs: number;
+}
+
+/**
+ * Aggregate token usage from maintenance-log/*.jsonl entries whose `action`
+ * ends in `-tokens` (e.g. B-tokens, F-tokens) since `sinceMs`.
+ *
+ * Only scans files for dates that could contain matching entries — typically
+ * today + yesterday for a 24h audit window. If sinceMs spans further back,
+ * passes a wider date range.
+ */
+export function summarizeTokensSince(piMindDir: string, sinceMs: number, now: number = Date.now()): TokenSummary {
+  const logDir = join(piMindDir, "raw", "maintenance-log");
+  const summary: TokenSummary = { totalTokens: 0, costUsd: 0, callCount: 0, sinceMs };
+  if (!existsSync(logDir)) return summary;
+
+  // Build the set of YYYY-MM-DD files to scan. Capped at 7 days to keep this cheap.
+  const dayMs = 86_400_000;
+  const spanDays = Math.min(7, Math.ceil((now - sinceMs) / dayMs) + 1);
+  const dates = new Set<string>();
+  for (let i = 0; i < spanDays; i++) {
+    dates.add(new Date(now - i * dayMs).toISOString().slice(0, 10));
+  }
+
+  let logFiles: string[];
+  try {
+    logFiles = readdirSync(logDir).filter((f) => f.endsWith(".jsonl") && dates.has(f.slice(0, 10)));
+  } catch { return summary; }
+
+  for (const filename of logFiles) {
+    let content: string;
+    try { content = readFileSync(join(logDir, filename), "utf-8"); } catch { continue; }
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      let entry: Record<string, unknown>;
+      try { entry = JSON.parse(line); } catch { continue; }
+      const action = entry.action;
+      if (typeof action !== "string" || !action.endsWith("-tokens")) continue;
+      const ts = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+      if (!Number.isFinite(ts) || ts < sinceMs) continue;
+      const tokens = entry.tokens as { totalTokens?: number; costUsd?: number } | undefined;
+      if (!tokens) continue;
+      summary.totalTokens += tokens.totalTokens ?? 0;
+      summary.costUsd += tokens.costUsd ?? 0;
+      summary.callCount += 1;
+    }
+  }
+  return summary;
+}
 
 interface AuditMarker {
   lastRun: number;
@@ -65,7 +120,7 @@ export function markAuditDone(piMindDir: string, summary?: string): void {
 }
 
 /** Build a context-injection block to surface audit-overdue status to the agent. */
-export function renderAuditNotice(status: AuditStatus): string | null {
+export function renderAuditNotice(status: AuditStatus, tokenSummary?: TokenSummary): string | null {
   if (!status.overdue) return null;
   const lines = ["<self-evolution>"];
   if (status.hoursSinceLast === null) {
@@ -76,6 +131,13 @@ export function renderAuditNotice(status: AuditStatus): string | null {
     if (status.lastSummary) {
       lines.push(`Last audit summary: ${status.lastSummary}`);
     }
+  }
+  if (tokenSummary && tokenSummary.callCount > 0) {
+    // costUsd shown to 4 decimal places — typical L2 spawn is $0.0003-0.001
+    const cost = tokenSummary.costUsd.toFixed(4);
+    lines.push(
+      `Memory L2 spend since last audit: ${tokenSummary.totalTokens.toLocaleString()} tokens / $${cost} across ${tokenSummary.callCount} call(s).`,
+    );
   }
   lines.push(
     "Suggest: run `use daily-audit skill` before substantive work in this session.",

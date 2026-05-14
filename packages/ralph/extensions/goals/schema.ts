@@ -41,6 +41,7 @@ export const GoalSchema = Type.Object({
   prdFile: Type.Optional(Type.String()),      // path to prd.json (if from PRD)
   tokensUsed: Type.Number({ default: 0 }),
   tokenBudget: Type.Optional(Type.Number()),
+  costUsd: Type.Optional(Type.Number()),  // accumulated USD cost from spawnPi token usage
   maxIterations: Type.Number({ default: 10 }),
   currentIteration: Type.Number({ default: 0 }),
   createdAt: Type.String(),
