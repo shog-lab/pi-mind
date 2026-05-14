@@ -106,9 +106,11 @@ Do NOT return anything else. Only the JSON object.
 Current directory: {cwd}
 `;
 
-// Default tool allowlists (used when config doesn't provide them)
-const DEFAULT_EXECUTION_TOOLS = ["Bash", "Read", "Write", "Edit", "Grep", "Find"];
-const DEFAULT_VERIFICATION_TOOLS = ["Bash", "Read", "Grep", "Find"];
+// Default tool allowlists — names must be lowercase to match pi's tool registry.
+// (Pi's --tools flag is case-sensitive: "Bash" does NOT match the built-in "bash".)
+// grep/find aren't standalone pi tools — agents access them via the bash tool.
+const DEFAULT_EXECUTION_TOOLS = ["bash", "read", "write", "edit"];
+const DEFAULT_VERIFICATION_TOOLS = ["bash", "read"];
 
 // --- Progress log helpers ---
 
@@ -614,7 +616,8 @@ ${!passes && verificationResult ? `Evidence: ${JSON.stringify(verificationResult
     }
   }
 
-  // Max iterations reached
+  // Max iterations reached — terminal state must be persisted to DB, not only returned.
+  store.transitionTo(goal.id, "failed");
   return {
     goalId: goal.id,
     completed: false,
