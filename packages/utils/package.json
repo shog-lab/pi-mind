@@ -9,7 +9,7 @@
   "types": "dist/index.d.ts",
   "files": ["dist/**", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
