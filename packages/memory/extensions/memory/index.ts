@@ -10,8 +10,7 @@
 import { existsSync, readdirSync, copyFileSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync, appendFileSync, unlinkSync, renameSync, rmdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnPi } from "../../lib/spawn-pi.js";
-import { resolvePiMindDir } from "../../lib/paths.js";
+import { spawnPi, resolvePiMindDir } from "pi-utils";
 
 import { MemoryCore, parseFrontmatter, TIER_L1, withGroupLock } from "./core.js";
 import { getAuditStatus, markAuditDone, renderAuditNotice, readMarker, summarizeTokensSince, AUDIT_INTERVAL_HOURS } from "./auto-audit.js";

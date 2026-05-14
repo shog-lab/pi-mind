@@ -12,7 +12,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { spawnPi, type PiTokens } from "pi-mind/dist/lib/spawn-pi.js";
+import { spawnPi, type PiTokens } from "pi-utils";
 import { GoalStore, resolveGoalsDir } from "./store.js";
 import { Goal, GoalState, UserStory, type GoalsConfig } from "./schema.js";
 import { withGroupLock } from "./mutex.js";

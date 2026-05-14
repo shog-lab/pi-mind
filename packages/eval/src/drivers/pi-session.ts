@@ -19,7 +19,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, realpathSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnPi, type PiTokens } from "pi-mind/dist/lib/spawn-pi.js";
+import { spawnPi, type PiTokens } from "pi-utils";
 import type { Driver, EvalQuestion } from "../types.js";
 
 export interface PiSessionDriverOptions {

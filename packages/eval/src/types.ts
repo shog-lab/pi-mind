@@ -13,7 +13,7 @@
  * Scoring happens out-of-process via the official evaluator.
  */
 
-import type { PiTokens } from "pi-mind/dist/lib/spawn-pi.js";
+import type { PiTokens } from "pi-utils";
 
 /** One conversation turn used to seed memory before the test question. */
 export interface HistoryMessage {
