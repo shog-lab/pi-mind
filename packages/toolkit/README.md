@@ -12,6 +12,7 @@ A drop-in package adding several commonly-used external tool integrations to any
 | `web_search` | `web_search` | mmx CLI | (mmx config) |
 | `understand_image` | `understand_image` | mmx vision CLI | (mmx config) |
 | `mcp-bridge` | `<server>_<tool>` per MCP server | Any MCP server | `mcp-servers.json` config |
+| `subagent` | `spawn_subagent` | child pi process | (none) |
 
 Each extension silently skips registration if its required env / config is missing — install pi-toolkit even if you only use some.
 

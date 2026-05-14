@@ -1,16 +1,19 @@
 /**
- * pi-mind Sub-Agent Extension
+ * pi-toolkit Sub-Agent Extension
  *
  * Provides spawn_subagent tool for an agent to spawn a focused sub-agent in a
  * target directory. Sub-agents have minimal context: no memory access, no parent
- * skills, no system prompt — just the task and web_search.
+ * skills, no system prompt — just the task plus web_search (when installed
+ * alongside in toolkit).
+ *
+ * Lives in pi-toolkit (not pi-mind) because it's an agent-facing tool with no
+ * memory dependency — it just wraps spawnPi from pi-utils. Pi-mind has its own
+ * internal L2 spawn helper for memory-specific use cases.
  *
  * Use cases:
- *   - Classify a compaction summary without bias from existing memory
  *   - Run tests / read code in an isolated context
  *   - Generate a SKILL.md from raw observations
- *
- * Uses shared spawnPi helper — see lib/spawn-pi.ts for stdio invariants.
+ *   - Classify content without bias from the parent agent's loaded context
  */
 
 import { existsSync, realpathSync } from "node:fs";
@@ -26,7 +29,7 @@ const SubAgentParams = Type.Object({
   timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 300, max: 600)" })),
 });
 
-/** Resolve the pi-mind package extensions directory regardless of symlink chain. */
+/** Resolve the toolkit package extensions directory regardless of symlink chain. */
 function getExtensionsDir(): string {
   const here = realpathSync(fileURLToPath(import.meta.url));
   // index.ts is at <pkg-root>/extensions/subagent/index.ts → up two levels = extensions/

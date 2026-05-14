@@ -1,5 +1,5 @@
 {
-  "name": "@pi-mind/subagent",
+  "name": "@pi-toolkit/subagent",
   "version": "0.1.0",
   "private": true,
   "description": "Spawn focused sub-agents with minimal context for isolated tasks.",
