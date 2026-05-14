@@ -44,7 +44,7 @@ export interface Dataset {
   load(opts?: { category?: string; limit?: number }): AsyncIterable<EvalQuestion>;
 }
 
-/** Per-question output — the agent's response and execution stats. No scoring. */
+/** Per-question output — the agent's response, optional judge score, and execution stats. */
 export interface EvalResult {
   questionId: string;
   response: string;
@@ -52,6 +52,12 @@ export interface EvalResult {
   durationMs: number;
   error?: string;
   metadata?: Record<string, unknown>;
+  /** LongMemEval judge score (0/1, NaN if judge call failed). Undefined when scoring is disabled. */
+  score?: number;
+  /** Raw judge reply for debugging — kept so borderline cases can be re-audited. */
+  judgeReply?: string;
+  /** Tokens spent by the judge call (separate from test response tokens). */
+  judgeTokens?: PiTokens;
 }
 
 /** Driver: runs one question against a real (or fake) memory backend. */
@@ -62,14 +68,20 @@ export interface Driver {
   close?(): Promise<void>;
 }
 
-/** Aggregated run output — responses + run stats. */
+/** Aggregated run output — responses + optional scoring + run stats. */
 export interface RunOutput {
   datasetName: string;
   driverName: string;
+  /** Judge model name if scoring was enabled; null otherwise. */
+  judgeModel: string | null;
   startedAt: string;
   finishedAt: string;
   totalQuestions: number;
   meanTokens?: number;
   meanCostUsd?: number;
+  /** Mean LongMemEval judge score across all questions with finite scores. Undefined if no scoring. */
+  meanScore?: number;
+  /** Per question_type breakdown of mean score + count. */
+  perCategory?: Record<string, { count: number; meanScore: number }>;
   results: EvalResult[];
 }
