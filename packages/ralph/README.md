@@ -1,4 +1,4 @@
-# pi-goals
+# @shog-lab/pi-goals
 
 **Ralph-style autonomous goal execution for [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent).**
 
@@ -8,7 +8,7 @@
 
 ```bash
 # Install
-npm i -D pi-goals
+npm i -D @shog-lab/pi-goals
 
 # Generate a PRD
 pi -p "use prd skill and create a PRD for login feature"
@@ -79,15 +79,19 @@ continue.
 └── .locks/               # Concurrent write protection
 ```
 
-## Dependency
+## Dependencies
 
-Requires `pi-mind` as peer dependency (shares `PI_MIND_DIR` conventions for episodic logging).
+Depends on `@shog-lab/pi-utils` for `spawnPi` + `resolvePiMindDir`. Shares
+the `.pi-mind` directory convention with `@shog-lab/pi-mind-core` (episodic
+logs go under `.pi-goals/episodic/`, sibling to `.pi-mind/`).
 
 ```json
 {
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "pi-mind": "^0.1.0"
+    "@earendil-works/pi-coding-agent": "^0.74.0"
+  },
+  "dependencies": {
+    "@shog-lab/pi-utils": "*"
   }
 }
 ```

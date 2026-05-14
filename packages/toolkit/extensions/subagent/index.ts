@@ -21,7 +21,7 @@ import { dirname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Type, type Static } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { spawnPi } from "pi-utils";
+import { spawnPi } from "@shog-lab/pi-utils";
 
 const SubAgentParams = Type.Object({
   cwd: Type.String({ description: "Absolute path to the working directory for the sub-agent (typically a repo or a subdirectory)." }),

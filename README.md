@@ -1,31 +1,35 @@
 # pi-mind monorepo
 
-This repo houses two independent npm packages that compose into a self-evolving agent platform on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent):
+Self-evolving agent platform on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). All packages publish under the `@shog-lab` scope.
 
-| Package | Published as | Role |
+| Directory | npm name | Role |
 |---|---|---|
-| [`packages/memory`](packages/memory/) | `pi-mind` | Persistent memory + self-evolution (raw / knowledge / graph layers) |
-| [`packages/toolkit`](packages/toolkit/) | `pi-toolkit` | Common pi tools — image generation (Jimeng), web search and image understanding (mmx), browser automation (agent-browser) |
+| [`packages/memory`](packages/memory/) | `@shog-lab/pi-mind-core` | Persistent memory + self-evolution (raw / knowledge / graph layers). The core of pi-mind. |
+| [`packages/utils`](packages/utils/) | `@shog-lab/pi-utils` | Internal infrastructure (spawnPi, .pi-mind path resolution). Used by memory / ralph / eval. |
+| [`packages/toolkit`](packages/toolkit/) | `@shog-lab/pi-toolkit` | Agent-facing tools — image generation (Jimeng), web search, image understanding (mmx), MCP bridge, sub-agent spawn |
+| [`packages/ralph`](packages/ralph/) | `@shog-lab/pi-goals` | Ralph-style autonomous goal execution loop with self-verification |
+| [`packages/eval`](packages/eval/) | `@shog-lab/pi-eval` | LongMemEval evaluation harness (private workspace) |
 
 Each package versions independently. Compose freely: install only what you need.
 
 ## Why monorepo
 
-Both packages share design philosophy (drop-in pi extensions, file-based cross-package coordination) and benefit from shared tooling (TypeScript base config, build pipeline). Keeping them in one repo avoids cross-repo coordination overhead while letting each ship on its own cadence.
+All packages share design philosophy (drop-in pi extensions, file-based cross-package coordination) and benefit from shared tooling (TypeScript base config, build pipeline). Keeping them in one repo avoids cross-repo coordination overhead while letting each ship on its own cadence.
 
 ## Quickstart
 
 ```bash
 cd ~/my-repo
-npm i -D pi-mind pi-toolkit
+npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit
 pi   # all extensions and skills loaded automatically
 ```
 
 Or pick one:
 
 ```bash
-npm i -D pi-mind                # memory + self-evolution only
-npm i -D pi-mind pi-toolkit     # plus image gen, web search, image understanding, browser CLI
+npm i -D @shog-lab/pi-mind-core                            # memory + self-evolution only
+npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit       # + image gen, web search, MCP bridge, sub-agent
+npm i -D @shog-lab/pi-mind-core @shog-lab/pi-goals         # + ralph (autonomous goal loop)
 ```
 
 See each package's README for details.
@@ -43,9 +47,9 @@ npm test                   # run all tests
 Per-package work:
 
 ```bash
-npm run build -w pi-mind          # build memory only
-npm test -w pi-mind               # test memory only
-npm publish -w pi-toolkit         # publish toolkit only
+npm run build -w @shog-lab/pi-mind-core      # build memory only
+npm test -w @shog-lab/pi-mind-core           # test memory only
+npm publish -w @shog-lab/pi-toolkit          # publish toolkit only
 ```
 
 ## Dogfooding pi-mind in this repo

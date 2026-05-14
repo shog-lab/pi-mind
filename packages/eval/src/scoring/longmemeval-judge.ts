@@ -25,7 +25,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnPi, type PiTokens } from "pi-utils";
+import { spawnPi, type PiTokens } from "@shog-lab/pi-utils";
 import type { EvalQuestion } from "../types.js";
 
 export interface JudgeOptions {

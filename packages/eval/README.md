@@ -1,4 +1,4 @@
-# @pi-mind/eval
+# @shog-lab/pi-eval
 
 Generates LongMemEval hypothesis files by running pi-mind against the benchmark.
 **Does NOT score** — scoring is delegated to LongMemEval's official Python evaluator.

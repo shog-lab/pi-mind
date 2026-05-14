@@ -1,5 +1,5 @@
 {
-  "name": "pi-mind",
+  "name": "@shog-lab/pi-mind-core",
   "version": "0.1.0",
   "description": "Give pi a mind: portable memory and self-evolution as a drop-in pi-coding-agent extension.",
   "type": "module",
@@ -31,7 +31,7 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
     "better-sqlite3": "^11.8.1",
-    "pi-utils": "*",
+    "@shog-lab/pi-utils": "*",
     "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {

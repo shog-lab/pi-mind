@@ -1,5 +1,5 @@
 {
-  "name": "@pi-mind/web-search",
+  "name": "@shog-lab/pi-toolkit-web-search",
   "version": "0.1.0",
   "private": true,
   "description": "Web search via mmx CLI.",
