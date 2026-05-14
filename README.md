@@ -1,30 +1,33 @@
 # pi-mind monorepo
 
-Self-evolving agent platform on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). All packages publish under the `@shog-lab` scope.
+Self-evolving agent platform built on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). All packages publish under the `@shog-lab` scope.
 
-| Directory | npm name | Role |
-|---|---|---|
-| [`packages/memory`](packages/memory/) | `@shog-lab/pi-mind-core` | Persistent memory + self-evolution (raw / knowledge / graph layers). The core of pi-mind. |
-| [`packages/utils`](packages/utils/) | `@shog-lab/pi-utils` | Internal infrastructure (spawnPi, .pi-mind path resolution). Used by memory / ralph / eval. |
-| [`packages/toolkit`](packages/toolkit/) | `@shog-lab/pi-toolkit` | Agent-facing tools — image generation (Jimeng), web search, image understanding (mmx), MCP bridge, sub-agent spawn |
-| [`packages/ralph`](packages/ralph/) | `@shog-lab/pi-goals` | Ralph-style autonomous goal execution loop with self-verification |
-| [`packages/eval`](packages/eval/) | `@shog-lab/pi-eval` | LongMemEval evaluation harness (private workspace) |
+## Packages
 
-Each package versions independently. Compose freely: install only what you need.
+### [`@shog-lab/pi-mind-core`](packages/memory/) — the core
+Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), **knowledge/** (compiled facts as markdown), **graph/** (entity-relationship triples). FTS5 + vector + KG retrieval. Daily-audit loop, subject classification, schema linting.
 
-## Why monorepo
+### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
+Drop-in extensions the LLM calls at runtime: **jimeng** (image gen), **web_search** + **understand_image** (via mmx CLI), **mcp-bridge** (proxy any MCP server as pi tools), **subagent** (spawn focused child pi processes).
 
-All packages share design philosophy (drop-in pi extensions, file-based cross-package coordination) and benefit from shared tooling (TypeScript base config, build pipeline). Keeping them in one repo avoids cross-repo coordination overhead while letting each ship on its own cadence.
+### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
+Ralph-style execution with a state machine: pick story → execution sub-agent → verification sub-agent → repeat. Real token-budget enforcement, git-branch isolation, SQLite-backed goal state.
+
+### [`@shog-lab/pi-utils`](packages/utils/) — internal infrastructure
+Shared by the above: `spawnPi()` (programmatic pi spawn with `--mode json` + token extraction) and `resolvePiMindDir()` (repo-rooted `.pi-mind` path that survives git worktree teardown). Not loaded as a pi extension.
+
+### [`@shog-lab/pi-eval`](packages/eval/) — evaluation harness (private)
+Runs pi-mind against [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and scores with the benchmark's official 5-prompt methodology (verbatim port). Outputs `hypothesis.jsonl` compatible with the upstream Python evaluator. Private workspace until methodology is stable enough for public claims.
 
 ## Quickstart
 
 ```bash
 cd ~/my-repo
 npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit
-pi   # all extensions and skills loaded automatically
+pi   # extensions + skills auto-loaded
 ```
 
-Or pick one:
+Pick what you need:
 
 ```bash
 npm i -D @shog-lab/pi-mind-core                            # memory + self-evolution only
@@ -39,31 +42,25 @@ See each package's README for details.
 ```bash
 git clone https://github.com/shog-lab/pi-mind.git
 cd pi-mind
-npm install                # installs all workspace deps + builds dist/
-npm run build              # rebuild all packages
-npm test                   # run all tests
+npm install   # installs all workspaces + runs each postinstall → .pi/ symlinks
+npm run build
+npm test      # 199 tests across all packages
 ```
 
-Per-package work:
+Per-package:
 
 ```bash
 npm run build -w @shog-lab/pi-mind-core      # build memory only
-npm test -w @shog-lab/pi-mind-core           # test memory only
-npm publish -w @shog-lab/pi-toolkit          # publish toolkit only
+npm test -w @shog-lab/pi-toolkit             # test toolkit only
+npm publish -w @shog-lab/pi-utils            # publish utils only
 ```
 
 ## Dogfooding pi-mind in this repo
 
-```bash
-npm install     # postinstall sets up .pi/ symlinks pointing into packages/*/dist/
-pi              # the agent loads memory, browser CLI, jimeng, etc., from this monorepo
-```
-
-Watch mode for active development on a single package:
+The monorepo's own `.pi/extensions/` is symlinked into `packages/*/dist/` via each postinstall. Running `pi` here loads memory, toolkit, ralph — letting the agent work on its own codebase.
 
 ```bash
-npx tsc -w -p packages/memory     # rebuild memory's dist/ on every .ts edit
-# pi picks up changes on next invocation (dist/ is what gets symlinked)
+npx tsc -w -p packages/memory   # watch + rebuild memory; pi picks up dist/ changes on next invocation
 ```
 
 ## History
