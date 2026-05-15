@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-toolkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Common pi-coding-agent extensions and CLI tools: image generation (Jimeng), web search and image understanding (mmx), browser automation (agent-browser).",
   "type": "module",
   "license": "MIT",

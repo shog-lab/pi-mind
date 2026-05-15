@@ -29,12 +29,21 @@ function findHostRoot() {
   if (initCwd && resolve(initCwd) !== PKG_ROOT) {
     return resolve(initCwd);
   }
+  // Fallback: walk up from PKG_ROOT until we land on a node_modules whose parent
+  // is NOT inside a pnpm cache. pnpm nests packages under
+  // node_modules/.pnpm/<pkg>@<ver>/node_modules/... so the first ancestor
+  // node_modules we hit is inside .pnpm — skip past it to find the real host root.
   let dir = resolve(PKG_ROOT);
   while (dir !== "/" && dir !== ".") {
     const parent = dirname(dir);
     if (parent === dir) break;
     if (parent.endsWith("/node_modules")) {
-      return dirname(parent);
+      const candidate = dirname(parent);
+      if (candidate.includes("/node_modules/.pnpm/")) {
+        dir = candidate;
+        continue;
+      }
+      return candidate;
     }
     dir = parent;
   }
