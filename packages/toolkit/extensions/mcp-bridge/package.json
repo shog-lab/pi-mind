@@ -1,5 +1,5 @@
 {
-  "name": "@shog-lab/pi-toolkit-mcp-bridge",
+  "name": "@shoglab/pi-toolkit-mcp-bridge",
   "version": "0.1.0",
   "private": true,
   "description": "Bridge MCP (Model Context Protocol) servers as pi-coding-agent tools. Reads mcp-servers.json, spawns servers, registers tools.",

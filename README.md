@@ -1,38 +1,38 @@
 # pi-mind monorepo
 
-Self-evolving agent platform built on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). All packages publish under the `@shog-lab` scope.
+Self-evolving agent platform built on top of [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent). All packages publish under the `@shoglab` scope.
 
 ## Packages
 
-### [`@shog-lab/pi-mind-core`](packages/memory/) — the core
+### [`@shoglab/pi-mind-core`](packages/memory/) — the core
 Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), **knowledge/** (compiled facts as markdown), **graph/** (entity-relationship triples). FTS5 + vector + KG retrieval. Daily-audit loop, subject classification, schema linting.
 
-### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
+### [`@shoglab/pi-toolkit`](packages/toolkit/) — agent-facing tools
 Drop-in extensions the LLM calls at runtime: **jimeng** (image gen), **web_search** + **understand_image** (via mmx CLI), **mcp-bridge** (proxy any MCP server as pi tools), **subagent** (spawn focused child pi processes).
 
-### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
+### [`@shoglab/pi-goals`](packages/ralph/) — autonomous goal loop
 Ralph-style execution with a state machine: pick story → execution sub-agent → verification sub-agent → repeat. Real token-budget enforcement, git-branch isolation, SQLite-backed goal state.
 
-### [`@shog-lab/pi-utils`](packages/utils/) — internal infrastructure
+### [`@shoglab/pi-utils`](packages/utils/) — internal infrastructure
 Shared by the above: `spawnPi()` (programmatic pi spawn with `--mode json` + token extraction) and `resolvePiMindDir()` (repo-rooted `.pi-mind` path that survives git worktree teardown). Not loaded as a pi extension.
 
-### [`@shog-lab/pi-eval`](packages/eval/) — evaluation harness (private)
+### [`@shoglab/pi-eval`](packages/eval/) — evaluation harness (private)
 Runs pi-mind against [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and scores with the benchmark's official 5-prompt methodology (verbatim port). Outputs `hypothesis.jsonl` compatible with the upstream Python evaluator. Private workspace until methodology is stable enough for public claims.
 
 ## Quickstart
 
 ```bash
 cd ~/my-repo
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit
+npm i -D @shoglab/pi-mind-core @shoglab/pi-toolkit
 pi   # extensions + skills auto-loaded
 ```
 
 Pick what you need:
 
 ```bash
-npm i -D @shog-lab/pi-mind-core                            # memory + self-evolution only
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit       # + image gen, web search, MCP bridge, sub-agent
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-goals         # + ralph (autonomous goal loop)
+npm i -D @shoglab/pi-mind-core                            # memory + self-evolution only
+npm i -D @shoglab/pi-mind-core @shoglab/pi-toolkit       # + image gen, web search, MCP bridge, sub-agent
+npm i -D @shoglab/pi-mind-core @shoglab/pi-goals         # + ralph (autonomous goal loop)
 ```
 
 See each package's README for details.
@@ -50,9 +50,9 @@ npm test      # 199 tests across all packages
 Per-package:
 
 ```bash
-npm run build -w @shog-lab/pi-mind-core      # build memory only
-npm test -w @shog-lab/pi-toolkit             # test toolkit only
-npm publish -w @shog-lab/pi-utils            # publish utils only
+npm run build -w @shoglab/pi-mind-core      # build memory only
+npm test -w @shoglab/pi-toolkit             # test toolkit only
+npm publish -w @shoglab/pi-utils            # publish utils only
 ```
 
 ## Dogfooding pi-mind in this repo

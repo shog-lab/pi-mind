@@ -1,4 +1,4 @@
-# @shog-lab/pi-mind-core
+# @shoglab/pi-mind-core
 
 **Give pi a mind: portable memory and self-evolution as a drop-in [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent) extension.**
 
@@ -32,7 +32,7 @@ Three layers map to cognitive science: **raw** (raw events), **semantic** (compi
 ## Install
 
 ```bash
-npm i -D @shog-lab/pi-mind-core
+npm i -D @shoglab/pi-mind-core
 ```
 
 `postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/ graph/` directories. Idempotent — re-running `npm install` is safe.
@@ -43,7 +43,7 @@ npm i -D @shog-lab/pi-mind-core
 
 ```bash
 cd ~/my-repo
-npm i -D @shog-lab/pi-mind-core
+npm i -D @shoglab/pi-mind-core
 
 pi                          # interactive: memory auto-loaded, system prompt injected
 # > "remember that I prefer pm2 over forever for process management"

@@ -1,5 +1,5 @@
 {
-  "name": "@shog-lab/pi-mind-core-memory",
+  "name": "@shoglab/pi-mind-core-memory",
   "version": "0.1.0",
   "private": true,
   "description": "Memory extension for pi-coding-agent: raw + knowledge + graph layers, FTS5 + vector + KG retrieval.",

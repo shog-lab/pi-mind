@@ -1,5 +1,5 @@
 {
-  "name": "@shog-lab/pi-toolkit-jimeng",
+  "name": "@shoglab/pi-toolkit-jimeng",
   "version": "0.1.0",
   "private": true,
   "description": "Jimeng (即梦) image generation via Volcengine API.",

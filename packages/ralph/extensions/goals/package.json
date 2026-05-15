@@ -1,5 +1,5 @@
 {
-  "name": "@shog-lab/pi-goals-extension",
+  "name": "@shoglab/pi-goals-extension",
   "version": "0.1.0",
   "private": true,
   "description": "Ralph-style autonomous goal execution: /goal command + state machine.",

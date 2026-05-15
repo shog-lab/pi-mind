@@ -1,4 +1,4 @@
-# @shog-lab/pi-toolkit
+# @shoglab/pi-toolkit
 
 **Common [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent) extensions and CLI tools — plus an MCP server bridge.**
 
@@ -21,7 +21,7 @@ Plus `agent-browser` CLI is shipped as a dependency. Its SKILL.md is symlinked f
 ## Install
 
 ```bash
-npm i -D @shog-lab/pi-toolkit
+npm i -D @shoglab/pi-toolkit
 ```
 
 `postinstall` symlinks `extensions/*/` into the host repo's `.pi/extensions/`, so pi auto-discovers them on next launch.

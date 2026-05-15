@@ -23,7 +23,7 @@ import {
 } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import Database from "better-sqlite3";
-import { resolvePiMindDir } from "@shog-lab/pi-utils";
+import { resolvePiMindDir } from "@shoglab/pi-utils";
 import { KnowledgeGraph } from "./knowledge-graph.js";
 import { LEGACY_L1_TYPES, Subject, Tier } from "../../lib/schema.js";
 

@@ -1,5 +1,5 @@
 {
-  "name": "@shog-lab/pi-utils",
+  "name": "@shoglab/pi-utils",
   "version": "0.1.0",
   "private": true,
   "description": "Shared infrastructure for pi-mind packages: pi spawn helper, .pi-mind path resolution. Internal — kept private until consumers (memory/ralph/eval) need it on npm.",
