@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
-import { resolvePiMindDir } from "@shoglab/pi-utils";
+import { resolvePiMindDir } from "@shog-lab/pi-utils";
 import { Goal, GoalState, IterationLog, DEFAULT_CONFIG, type GoalsConfig } from "./schema.js";
 import { withGroupLock } from "./mutex.js";
 

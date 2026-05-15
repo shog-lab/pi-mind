@@ -1,4 +1,4 @@
-# @shoglab/pi-utils
+# @shog-lab/pi-utils
 
 Internal infrastructure shared by pi-mind packages (memory, ralph, eval).
 
