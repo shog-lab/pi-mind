@@ -8,7 +8,7 @@ Self-evolving agent platform built on top of [pi-coding-agent](https://github.co
 Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), **knowledge/** (compiled facts as markdown), **graph/** (entity-relationship triples). FTS5 + vector + KG retrieval. Daily-audit loop, subject classification, schema linting.
 
 ### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
-Drop-in extensions the LLM calls at runtime: **jimeng** (image gen), **web_search** + **understand_image** (via mmx CLI), **mcp-bridge** (proxy any MCP server as pi tools), **subagent** (spawn focused child pi processes).
+Drop-in extensions the LLM calls at runtime: **web_search** + **understand_image** (via mmx CLI — fill MiniMax's missing search/vision capabilities), **mcp-bridge** (proxy any MCP server as pi tools), **subagent** (spawn focused child pi processes).
 
 ### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
 Ralph-style execution with a state machine: pick story → execution sub-agent → verification sub-agent → repeat. Real token-budget enforcement, git-branch isolation, SQLite-backed goal state.

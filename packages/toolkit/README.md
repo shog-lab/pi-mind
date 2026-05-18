@@ -8,13 +8,12 @@ A drop-in package adding several commonly-used external tool integrations to any
 
 | Extension | Tool name(s) | Backend | Required env |
 |---|---|---|---|
-| `jimeng` | `jimeng_generate` | Volcengine Jimeng T2I API | `JIMENG_ACCESS_KEY`, `JIMENG_SECRET_KEY` |
 | `web_search` | `web_search` | mmx CLI | (mmx config) |
 | `understand_image` | `understand_image` | mmx vision CLI | (mmx config) |
 | `mcp-bridge` | `<server>_<tool>` per MCP server | Any MCP server | `mcp-servers.json` config |
 | `subagent` | `spawn_subagent` | child pi process | (none) |
 
-Each extension silently skips registration if its required env / config is missing — install pi-toolkit even if you only use some.
+`mcp-bridge` silently skips registration when no `mcp-servers.json` exists, so install pi-toolkit even if you only use some extensions.
 
 Plus `agent-browser` CLI is shipped as a dependency. Its SKILL.md is symlinked from upstream so the agent knows how to use it via Bash.
 
@@ -27,13 +26,6 @@ npm i -D @shog-lab/pi-toolkit
 `postinstall` symlinks `extensions/*/` into the host repo's `.pi/extensions/`, so pi auto-discovers them on next launch.
 
 ## Configure
-
-### Jimeng (image generation)
-
-```bash
-export JIMENG_ACCESS_KEY="AKLT..."
-export JIMENG_SECRET_KEY="..."
-```
 
 ### MCP servers (figma, filesystem, etc.)
 

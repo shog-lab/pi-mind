@@ -1,7 +1,7 @@
 {
   "name": "@shog-lab/pi-toolkit",
-  "version": "0.1.1",
-  "description": "Common pi-coding-agent extensions and CLI tools: image generation (Jimeng), web search and image understanding (mmx), browser automation (agent-browser).",
+  "version": "0.1.2",
+  "description": "Common pi-coding-agent extensions: web search + image understanding (mmx), MCP server bridge, sub-agent spawn, browser automation (agent-browser).",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
-    "@volcengine/openapi": "^1.0.0",
     "agent-browser": "^0.27.0",
     "@shog-lab/pi-utils": "*"
   },
