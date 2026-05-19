@@ -2,10 +2,6 @@
 
 Internal infrastructure shared by pi-mind packages (memory, ralph, eval).
 
-**Private workspace** — not published. If a published package (memory, ralph)
-ever needs to ship to npm, this becomes a transitive concern; flip `private:
-false` then.
-
 ## What's in here
 
 - `spawnPi(opts)` — programmatic pi-coding-agent spawn with `--mode json`,
