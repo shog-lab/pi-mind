@@ -154,9 +154,15 @@ async function detectWorthRemembering(input: {
         format: "json",
         messages: [{ role: "user", content: prompt }],
         stream: false,
+        // qwen3 family enables chain-of-thought ("thinking") by default, which
+        // adds 10-50s of latency per call. For our pure-classification task
+        // (return one JSON object) the thinking is wasted compute. Disabling
+        // brings qwen3:4b from >60s down to ~3s on commodity hardware.
+        // Non-qwen3 models ignore this field, so it's safe to always send.
+        think: false,
         // Keep the model resident in Ollama for 30 min after this call so the
-        // next agent_end doesn't pay the cold-start penalty (multiple seconds
-        // for 4B). Idle eviction still happens once unused beyond keep_alive.
+        // next agent_end doesn't pay the cold-start penalty. Idle eviction
+        // still happens once unused beyond keep_alive.
         keep_alive: "30m",
       }),
       signal: controller.signal,
