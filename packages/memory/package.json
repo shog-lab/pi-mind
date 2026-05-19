@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
+    "dev": "tsc --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
     "lint:wiki": "tsx scripts/wiki-lint.ts",
     "verify-worth-remembering": "tsx scripts/verify-worth-remembering.ts",
