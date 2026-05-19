@@ -102,10 +102,11 @@ async function detectWorthRemembering(input: {
   agentMessagesText: string;
   toolResultsText: string;
 }): Promise<WorthRememberingResult | null> {
-  // Per-call timeout: qwen3:4b is slower than 1.5B; give it more headroom
-  // before treating the response as a miss. Async fire-and-forget anyway,
-  // so timeout only affects observability ("did the LLM finish before we gave up").
-  const timeoutMs = LLM_MODEL.startsWith("qwen2.5:1.5b") ? 3_000 : 8_000;
+  // Per-call timeout: 4B is slower than 1.5B AND first call has a cold-start
+  // (model load) penalty of a few seconds. 30s is generous; calls are async
+  // fire-and-forget anyway, so the agent loop is never blocked. Timeout only
+  // affects observability ("did the LLM finish before we gave up").
+  const timeoutMs = LLM_MODEL.startsWith("qwen2.5:1.5b") ? 5_000 : 30_000;
   const prompt = [
     "判断这一轮交互里有没有值得长期记忆的内容。",
     "",
@@ -148,7 +149,16 @@ async function detectWorthRemembering(input: {
     const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: LLM_MODEL, format: "json", messages: [{ role: "user", content: prompt }], stream: false }),
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        format: "json",
+        messages: [{ role: "user", content: prompt }],
+        stream: false,
+        // Keep the model resident in Ollama for 30 min after this call so the
+        // next agent_end doesn't pay the cold-start penalty (multiple seconds
+        // for 4B). Idle eviction still happens once unused beyond keep_alive.
+        keep_alive: "30m",
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);

@@ -156,6 +156,7 @@ async function detectWorthRemembering(input: {
         format: "json",
         messages: [{ role: "user", content: prompt }],
         stream: false,
+        keep_alive: "30m",
       }),
     });
     if (!resp.ok) return { error: `Ollama HTTP ${resp.status}` };
