@@ -73,7 +73,13 @@ function getSemaphore(): Semaphore {
 // Same operational shape as the old feedback-llm: async fire-and-forget,
 // 3s timeout, format:json, silent on failure. Logs every decision for audit.
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-const LLM_MODEL = "qwen2.5:1.5b";
+// Default to qwen3:4b: the verifier (scripts/verify-worth-remembering.ts)
+// shows 7/7 on this prompt vs 1.5B's 5/7 — qwen2.5:1.5b is overeager and
+// false-positives on casual chat / status updates with the multi-class
+// worth-remembering schema. Calls are async fire-and-forget, so the extra
+// latency (a few hundred ms) does not affect the user-facing agent loop.
+// Override with PI_MIND_LLM_MODEL=qwen2.5:1.5b if the larger model isn't pulled.
+const LLM_MODEL = process.env.PI_MIND_LLM_MODEL || "qwen3:4b";
 
 const WORTH_REMEMBERING_SUBJECTS = ["user", "project", "agent-feedback", "reference"] as const;
 
@@ -96,30 +102,36 @@ async function detectWorthRemembering(input: {
   agentMessagesText: string;
   toolResultsText: string;
 }): Promise<WorthRememberingResult | null> {
+  // Per-call timeout: qwen3:4b is slower than 1.5B; give it more headroom
+  // before treating the response as a miss. Async fire-and-forget anyway,
+  // so timeout only affects observability ("did the LLM finish before we gave up").
+  const timeoutMs = LLM_MODEL.startsWith("qwen2.5:1.5b") ? 3_000 : 8_000;
   const prompt = [
     "判断这一轮交互里有没有值得长期记忆的内容。",
     "",
-    "值得记（shouldRemember=true）：",
-    "  - 用户表达偏好/纠错/抱怨（不对、我更喜欢、太差了）",
-    "  - agent 通过工具拿到新事实（文章、文档、命令结果含关键信息）",
-    "  - agent 做出非显然的决策或反思",
-    "  - 多步推理得出有复用价值的结论",
+    "===== 应该 remember 的（true）=====",
     "",
-    "不值得记（shouldRemember=false）：",
-    "  - 普通问答（用户问怎么做 + agent 解答）",
-    "  - 状态更新（跑完了、读完了）",
-    "  - 已在 conversation 多次出现的内容",
-    "  - 当前 task 临时进展",
+    "A. 用户偏好 / 纠错 / 抱怨（type=user）",
+    "  例：「我更喜欢 ripgrep」「不对，应该用 git revert」「抱歉我刚才说错了」",
+    "  → true",
     "",
-    "type 分类（仅当 shouldRemember=true）：",
-    "  user           — 用户偏好/要求/约束",
-    "  project        — 项目代码/架构/技术决策",
-    "  agent-feedback — agent 的决策/反思/学到的方法",
-    "  reference      — 外部知识/文章/文档内容",
+    "B. 工具拿回新事实，跨会话有复用价值（type=reference）",
+    "  例：agent 读了一篇文章，要点是「Rust 借用检查在编译期保证内存安全」",
+    "  → true",
     "",
-    "tier：",
-    "  L1 — 仅给持久必备的用户偏好用（agent 每次会话都看到）",
-    "  L2 — 其他一切（默认）",
+    "C. agent 自己做了非显然决策 / 反思（type=agent-feedback 或 project）",
+    "  例：「决定用 polling 而不是 webhook，因为 webhook 需要公网 IP」",
+    "  → true",
+    "",
+    "===== 一律 false =====",
+    "",
+    "D. 状态汇报 / 进度更新（跑完了 / 通过了 / OK 我去做）",
+    "E. 一次性查询的答案（今天天气 / 现在几点 — 明天就不准了）",
+    "F. 闲聊 / 寒暄（你好 / 谢谢 / 天气不错）",
+    "G. 普通工作流（用户给任务 + agent 完成，没新规则没新事实）",
+    "",
+    "type: user | project | agent-feedback | reference",
+    "tier: L1（仅持久用户偏好，保守用）| L2（默认）",
     "",
     `=== user prompt ===\n${truncateForLLM(input.userPrompt, 800)}`,
     "",
@@ -132,7 +144,7 @@ async function detectWorthRemembering(input: {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -628,12 +640,15 @@ export default function memExtension(pi: ExtensionAPI) {
   });
 
   // agent_end: run worth-remembering detection over the full turn.
-  // Snapshots state at fire time, resets cache immediately, then runs detection async.
+  // Snapshots state at fire time (including the toolResults array, not just its
+  // joined text — saveMemory's context.toolResults wants the array), resets the
+  // module cache immediately, then runs detection async against the snapshot.
   pi.on("agent_end", (event) => {
     const messages = (event as { messages?: unknown[] }).messages ?? [];
     const snapshot = {
       userPrompt: lastUserPrompt,
       agentMessagesText: serializeAgentMessages(messages),
+      toolResults: [...lastToolResults],
       toolResultsText: lastToolResults.join("\n"),
     };
     lastUserPrompt = "";
@@ -641,7 +656,11 @@ export default function memExtension(pi: ExtensionAPI) {
 
     if (!snapshot.userPrompt.trim()) return;
 
-    detectWorthRemembering(snapshot).then(async (result) => {
+    detectWorthRemembering({
+      userPrompt: snapshot.userPrompt,
+      agentMessagesText: snapshot.agentMessagesText,
+      toolResultsText: snapshot.toolResultsText,
+    }).then(async (result) => {
       logMaintenance("worth-remembering-llm", {
         shouldRemember: result?.shouldRemember ?? null,
         type: result?.type,
@@ -653,7 +672,7 @@ export default function memExtension(pi: ExtensionAPI) {
           primary: result.primary,
           context: {
             userPrompt: snapshot.userPrompt,
-            toolResults: lastToolResults.length ? lastToolResults : undefined,
+            toolResults: snapshot.toolResults.length ? snapshot.toolResults : undefined,
           },
           tier: result.tier,
           tags: result.suggestedTags,

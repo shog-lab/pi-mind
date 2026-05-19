@@ -1,6 +1,6 @@
 ---
 name: daily-audit
-description: Daily memory audit — lint schema, sample feedback decisions, archive old compactions, report.
+description: Daily memory audit — lint schema, sample worth-remembering decisions, archive old compactions, report.
 ---
 
 # daily-audit
@@ -10,7 +10,7 @@ Run a periodic health check over `$PI_MIND_DIR/`. Designed to be triggered by OS
 ## What it does
 
 1. Run wiki-lint over `knowledge/` and report errors / warnings / duplicates
-2. Sample recent feedback-llm decisions from the maintenance log (precision spot-check)
+2. Sample recent worth-remembering-llm decisions from the maintenance log (precision spot-check)
 3. Archive compaction files older than 14 days
 4. Report results as a single concise summary
 
@@ -35,17 +35,22 @@ npx pi-mind-lint --fix              # apply (after user confirms if invoked inte
 
 Detailed flow: `../wiki-lint/SKILL.md`.
 
-### 2. Feedback-LLM decision sample
+### 2. Worth-remembering LLM decision sample
 
 ```bash
 DATE=$(date +%Y-%m-%d)
 LOG="$PI_MIND_DIR/raw/maintenance-log/${DATE}.jsonl"
-grep "feedback-llm" "$LOG" 2>/dev/null | head -3
+grep "worth-remembering-llm" "$LOG" 2>/dev/null | head -3
+grep "worth-remembering-saved" "$LOG" 2>/dev/null | head -3
+grep "remember-this" "$LOG" 2>/dev/null | head -3
 ```
 
-Each entry: `{shouldRemember: true | false | null}`.
+`worth-remembering-llm` entries: `{shouldRemember: true | false | null, type?}`.
 - `null` = Ollama call failed (down / timeout / network)
 - Several consecutive `null` = Ollama unhealthy, surface to user
+
+`worth-remembering-saved` entries log actual writes to knowledge/.
+`remember-this` entries log explicit tool calls from the agent.
 
 ### 3. Archive old compactions
 
