@@ -203,6 +203,14 @@ async function detectWorthRemembering(input: {
 //   agent_end          → consumes it, then resets
 let lastUserPrompt = "";
 
+// Set true when remember_this successfully writes a memory in the current
+// agent loop. agent_end consults this flag and, if set, skips the
+// worth-remembering detector entirely — the agent already made an explicit
+// save decision; running the auto detector would just produce a noisier
+// duplicate of the same conceptual memory under a different primary hash.
+// Reset at agent_end (covers both skip and normal paths).
+let explicitSaveFiredThisAgentLoop = false;
+
 function serializeAgentMessages(messages: unknown[]): string {
   return messages
     .map((m) => {
@@ -587,6 +595,11 @@ export default function memExtension(pi: ExtensionAPI) {
           tags,
           source: "explicit",
         });
+        // Only mark the explicit-save flag when the write actually landed.
+        // Dedup hits (fp=null) leave the flag false so the auto detector still
+        // runs as backup, which is the intent: an existing memory shouldn't
+        // suppress new ones from later in the same turn.
+        if (fp) explicitSaveFiredThisAgentLoop = true;
         const text = fp ? `Saved to ${fp}` : "Skipped (duplicate of existing memory)";
         logMaintenance("remember-this", { saved: !!fp, type, tier });
         return { content: [{ type: "text" as const, text }], details: {} };
@@ -641,9 +654,18 @@ export default function memExtension(pi: ExtensionAPI) {
   });
 
   // agent_end: run worth-remembering detection over the full turn.
-  // Snapshots userPrompt + serialized agent messages, resets the cache
-  // immediately, then runs detection async against the snapshot.
+  // Skips entirely if agent already made an explicit save via remember_this
+  // in this loop (the explicit decision is canonical for the turn).
+  // Otherwise: snapshot userPrompt + agent messages, reset cache, run
+  // detection async against the snapshot.
   pi.on("agent_end", (event) => {
+    if (explicitSaveFiredThisAgentLoop) {
+      logMaintenance("worth-remembering-skipped", { reason: "explicit-save" });
+      explicitSaveFiredThisAgentLoop = false;
+      lastUserPrompt = "";
+      return;
+    }
+
     const messages = (event as { messages?: unknown[] }).messages ?? [];
     const snapshot = {
       userPrompt: lastUserPrompt,
