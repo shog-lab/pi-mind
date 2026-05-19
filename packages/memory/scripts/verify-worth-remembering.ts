@@ -27,7 +27,6 @@ interface TestCase {
   name: string;
   userPrompt: string;
   agentMessagesText?: string;
-  toolResultsText?: string;
   expectRemember: boolean;
   /** If set, expected type; null/undefined = don't check type */
   expectType?: Subject | null;
@@ -53,12 +52,12 @@ const CASES: TestCase[] = [
     expectRemember: true,
   },
 
-  // New "agent learned" cases
+  // New "agent learned" cases (no toolResults — we rely on agent's own summary
+  // since tools' raw output is intentionally not captured)
   {
     name: "agent fetched a substantive fact",
     userPrompt: "帮我读一下这篇文章",
     agentMessagesText: "[assistant] 文章总结：Rust 的所有权模型通过编译期借用检查保证内存安全，无需 GC。",
-    toolResultsText: "[WebFetch] Rust's ownership system enforces memory safety at compile time without garbage collection.",
     expectRemember: true,
   },
 
@@ -100,7 +99,6 @@ function truncate(text: string, max: number): string {
 async function detectWorthRemembering(input: {
   userPrompt: string;
   agentMessagesText: string;
-  toolResultsText: string;
 }): Promise<LlmResult | { error: string }> {
   const prompt = [
     "判断这一轮交互里有没有值得长期记忆的内容。",
@@ -140,9 +138,7 @@ async function detectWorthRemembering(input: {
     "",
     `=== user prompt ===\n${truncate(input.userPrompt, 800)}`,
     "",
-    `=== agent messages ===\n${truncate(input.agentMessagesText, 2000)}`,
-    "",
-    `=== tool results ===\n${truncate(input.toolResultsText, 1200)}`,
+    `=== agent messages ===\n${truncate(input.agentMessagesText, 3000)}`,
     "",
     '输出 JSON（且仅 JSON）: {"shouldRemember": true/false, "type": "user|project|agent-feedback|reference", "primary": "一句话自包含浓缩", "tier": "L1|L2", "suggestedTags": ["1-3个topic词"]}',
   ].join("\n");
@@ -191,7 +187,6 @@ async function main(): Promise<void> {
     const result = await detectWorthRemembering({
       userPrompt: tc.userPrompt,
       agentMessagesText: tc.agentMessagesText ?? "",
-      toolResultsText: tc.toolResultsText ?? "",
     });
 
     if ("error" in result) {

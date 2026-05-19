@@ -51,6 +51,12 @@ export interface SearchResult {
 /**
  * Input to saveMemory: structured so writers carry both the memory itself
  * (primary) and the conversation context that produced it.
+ *
+ * We intentionally do NOT carry raw tool results in context. The agent's
+ * message is already the curated digest of what tools returned; capturing
+ * raw tool output would (a) duplicate signal already present in the agent
+ * message and (b) leak pi-mind's own tool calls (e.g. remember_this) back
+ * into the memory, creating a self-observation loop.
  */
 export interface SaveMemoryInput {
   type: Subject;
@@ -58,7 +64,6 @@ export interface SaveMemoryInput {
   context?: {
     userPrompt?: string;
     priorAgentMessage?: string;
-    toolResults?: string[];
   };
   tier?: Tier;
   tags?: string[];
@@ -68,18 +73,12 @@ export interface SaveMemoryInput {
 
 function renderMemoryBody(input: SaveMemoryInput): string {
   const ctx = input.context;
-  const hasContext = !!(ctx && (ctx.userPrompt || ctx.priorAgentMessage || ctx.toolResults?.length));
+  const hasContext = !!(ctx && (ctx.userPrompt || ctx.priorAgentMessage));
   if (!hasContext) return input.primary;
 
   const lines = [input.primary, "", "## Context", ""];
   if (ctx!.userPrompt) lines.push(`- **User prompt**: ${ctx!.userPrompt}`);
   if (ctx!.priorAgentMessage) lines.push(`- **Prior agent message**: ${ctx!.priorAgentMessage}`);
-  if (ctx!.toolResults?.length) {
-    lines.push(`- **Tool results**:`);
-    for (const tr of ctx!.toolResults) {
-      lines.push(`  - ${tr}`);
-    }
-  }
   return lines.join("\n");
 }
 

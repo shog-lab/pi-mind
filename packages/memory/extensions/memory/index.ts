@@ -3,7 +3,10 @@
  *
  * Hooks into agent lifecycle:
  * - before_agent_start → capture user prompt + inject L1 + L2/L3 memories
- * - turn_end           → archive sessions + capture toolResults into turn state
+ * - turn_end           → archive sessions (no tool-result capture: we trust
+ *                        the agent's own message as the curated digest of
+ *                        any tool output; capturing raw tool results creates
+ *                        a self-observation loop with pi-mind's own tools)
  * - agent_end          → run worth-remembering detector + save high-signal memories
  * - session_compact    → save compaction summary + B+D+F maintenance
  *
@@ -100,7 +103,6 @@ function truncateForLLM(text: string, maxChars: number): string {
 async function detectWorthRemembering(input: {
   userPrompt: string;
   agentMessagesText: string;
-  toolResultsText: string;
 }): Promise<WorthRememberingResult | null> {
   // Per-call timeout: 4B is slower than 1.5B AND first call has a cold-start
   // (model load) penalty of a few seconds. 30s is generous; calls are async
@@ -136,9 +138,7 @@ async function detectWorthRemembering(input: {
     "",
     `=== user prompt ===\n${truncateForLLM(input.userPrompt, 800)}`,
     "",
-    `=== agent messages ===\n${truncateForLLM(input.agentMessagesText, 2000)}`,
-    "",
-    `=== tool results ===\n${truncateForLLM(input.toolResultsText, 1200)}`,
+    `=== agent messages ===\n${truncateForLLM(input.agentMessagesText, 3000)}`,
     "",
     '输出 JSON: {"shouldRemember": bool, "type": "user|project|agent-feedback|reference", "primary": "一句话自包含浓缩", "tier": "L1|L2", "suggestedTags": ["1-3个topic词"]}',
   ].join("\n");
@@ -195,21 +195,13 @@ async function detectWorthRemembering(input: {
 
 // --- Turn-state cache (per pi process, single agent loop at a time) ---
 //
-// Captured across hooks so agent_end can see what happened during the turn:
+// Only the user prompt is cached across hooks. We deliberately do NOT cache
+// tool results: pi-mind's own tools (remember_this, mark_daily_audit_complete)
+// would otherwise feed their results back into pi-mind's detector, and the
+// agent's message already summarizes whatever external tools returned.
 //   before_agent_start → sets lastUserPrompt
-//   turn_end           → appends serialized toolResults
-//   agent_end          → consumes both, then resets
+//   agent_end          → consumes it, then resets
 let lastUserPrompt = "";
-let lastToolResults: string[] = [];
-
-function summarizeToolResult(tr: unknown): string {
-  if (typeof tr === "string") return tr.slice(0, 300);
-  try {
-    return JSON.stringify(tr).slice(0, 300);
-  } catch {
-    return String(tr).slice(0, 300);
-  }
-}
 
 function serializeAgentMessages(messages: unknown[]): string {
   return messages
@@ -590,10 +582,7 @@ export default function memExtension(pi: ExtensionAPI) {
         const fp = await getCore().saveMemory({
           type,
           primary: params.content,
-          context: {
-            userPrompt: lastUserPrompt || undefined,
-            toolResults: lastToolResults.length ? [...lastToolResults] : undefined,
-          },
+          context: { userPrompt: lastUserPrompt || undefined },
           tier,
           tags,
           source: "explicit",
@@ -640,43 +629,31 @@ export default function memExtension(pi: ExtensionAPI) {
     sweepSpawns();
   });
 
-  // turn_end: archive session every N turns + capture toolResults into the
-  // turn-state cache for agent_end's worth-remembering detector.
-  pi.on("turn_end", (event) => {
+  // turn_end: archive session every N turns. We intentionally do NOT capture
+  // event.toolResults: pi-mind's own tools (remember_this etc.) would feed
+  // their results back into our detector, and the agent's message already
+  // contains the curated digest of anything external tools returned.
+  pi.on("turn_end", () => {
     turnCount++;
     if (turnCount % ARCHIVE_EVERY_N_TURNS === 0) {
       try { archiveSession(); } catch {}
     }
-    const toolResults = (event as { toolResults?: unknown[] }).toolResults;
-    if (Array.isArray(toolResults)) {
-      for (const tr of toolResults) {
-        lastToolResults.push(summarizeToolResult(tr));
-      }
-    }
   });
 
   // agent_end: run worth-remembering detection over the full turn.
-  // Snapshots state at fire time (including the toolResults array, not just its
-  // joined text — saveMemory's context.toolResults wants the array), resets the
-  // module cache immediately, then runs detection async against the snapshot.
+  // Snapshots userPrompt + serialized agent messages, resets the cache
+  // immediately, then runs detection async against the snapshot.
   pi.on("agent_end", (event) => {
     const messages = (event as { messages?: unknown[] }).messages ?? [];
     const snapshot = {
       userPrompt: lastUserPrompt,
       agentMessagesText: serializeAgentMessages(messages),
-      toolResults: [...lastToolResults],
-      toolResultsText: lastToolResults.join("\n"),
     };
     lastUserPrompt = "";
-    lastToolResults = [];
 
     if (!snapshot.userPrompt.trim()) return;
 
-    detectWorthRemembering({
-      userPrompt: snapshot.userPrompt,
-      agentMessagesText: snapshot.agentMessagesText,
-      toolResultsText: snapshot.toolResultsText,
-    }).then(async (result) => {
+    detectWorthRemembering(snapshot).then(async (result) => {
       logMaintenance("worth-remembering-llm", {
         shouldRemember: result?.shouldRemember ?? null,
         type: result?.type,
@@ -686,10 +663,7 @@ export default function memExtension(pi: ExtensionAPI) {
         const fp = await getCore().saveMemory({
           type: result.type,
           primary: result.primary,
-          context: {
-            userPrompt: snapshot.userPrompt,
-            toolResults: snapshot.toolResults.length ? snapshot.toolResults : undefined,
-          },
+          context: { userPrompt: snapshot.userPrompt },
           tier: result.tier,
           tags: result.suggestedTags,
           source: "worth-remembering",
