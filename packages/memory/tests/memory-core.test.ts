@@ -138,26 +138,45 @@ describe('MemoryCore', () => {
 
   describe('saveMemory', () => {
     it('saves compaction to raw/compaction/', async () => {
-      const fp = await mc.saveMemory('compaction', 'Summary text');
+      const fp = await mc.saveMemory({ type: 'compaction', primary: 'Summary text' });
       expect(fp).toContain('raw/compaction/');
-      expect(fs.existsSync(fp)).toBe(true);
+      expect(fs.existsSync(fp!)).toBe(true);
     });
 
-    it('saves other types to wiki/ root', async () => {
-      const fp = await mc.saveMemory('fact', 'User likes dark mode');
+    it('saves other types to knowledge/ root', async () => {
+      const fp = await mc.saveMemory({ type: 'user', primary: 'User likes dark mode' });
       expect(fp).toContain('/knowledge/');
       expect(fp).not.toContain('/compaction/');
-      expect(fs.existsSync(fp)).toBe(true);
+      expect(fs.existsSync(fp!)).toBe(true);
     });
 
     it('writes valid frontmatter with type, tier, and tags', async () => {
-      const fp = await mc.saveMemory('project', 'Findings', { tier: 'L2', tags: ['ai', 'memory'] });
-      const content = fs.readFileSync(fp, 'utf-8');
+      const fp = await mc.saveMemory({ type: 'project', primary: 'Findings', tier: 'L2', tags: ['ai', 'memory'] });
+      const content = fs.readFileSync(fp!, 'utf-8');
       const { meta, body } = parseFrontmatter(content);
       expect(meta.type).toBe('project');
       expect(meta.tier).toBe('L2');
       expect(meta.tags).toEqual(['ai', 'memory']);
       expect(body).toBe('Findings');
+    });
+
+    it('renders context section when context is provided', async () => {
+      const fp = await mc.saveMemory({
+        type: 'agent-feedback',
+        primary: 'User wants polling avoided',
+        context: { userPrompt: 'nope, not polling', priorAgentMessage: 'I suggest polling' },
+      });
+      const content = fs.readFileSync(fp!, 'utf-8');
+      expect(content).toContain('## Context');
+      expect(content).toContain('nope, not polling');
+      expect(content).toContain('I suggest polling');
+    });
+
+    it('dedupes by (type, primary) hash on the second write', async () => {
+      const fp1 = await mc.saveMemory({ type: 'reference', primary: 'Rust ownership rules' });
+      expect(fp1).toBeTruthy();
+      const fp2 = await mc.saveMemory({ type: 'reference', primary: 'Rust ownership rules' });
+      expect(fp2).toBeNull();
     });
   });
 
@@ -235,7 +254,7 @@ describe('MemoryCore', () => {
 
     it('scans recursively (compaction/ subdirectory)', async () => {
       // compaction entries should not be L1 (tier=L2)
-      await mc.saveMemory('compaction', 'A conversation summary');
+      await mc.saveMemory({ type: 'compaction', primary: 'A conversation summary' });
       const l1 = mc.loadL1();
       expect(l1.every((e) => e.type !== 'compaction')).toBe(true);
     });

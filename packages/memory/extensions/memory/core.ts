@@ -48,6 +48,41 @@ export interface SearchResult {
   score: number;
 }
 
+/**
+ * Input to saveMemory: structured so writers carry both the memory itself
+ * (primary) and the conversation context that produced it.
+ */
+export interface SaveMemoryInput {
+  type: Subject;
+  primary: string;
+  context?: {
+    userPrompt?: string;
+    priorAgentMessage?: string;
+    toolResults?: string[];
+  };
+  tier?: Tier;
+  tags?: string[];
+  /** Informational: which writer produced this (worth-remembering, explicit, compaction, ...) */
+  source?: string;
+}
+
+function renderMemoryBody(input: SaveMemoryInput): string {
+  const ctx = input.context;
+  const hasContext = !!(ctx && (ctx.userPrompt || ctx.priorAgentMessage || ctx.toolResults?.length));
+  if (!hasContext) return input.primary;
+
+  const lines = [input.primary, "", "## Context", ""];
+  if (ctx!.userPrompt) lines.push(`- **User prompt**: ${ctx!.userPrompt}`);
+  if (ctx!.priorAgentMessage) lines.push(`- **Prior agent message**: ${ctx!.priorAgentMessage}`);
+  if (ctx!.toolResults?.length) {
+    lines.push(`- **Tool results**:`);
+    for (const tr of ctx!.toolResults) {
+      lines.push(`  - ${tr}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 // --- Config ---
 
 /** Load pi-mind-config.json from group dir, fall back to defaults */
@@ -539,36 +574,46 @@ export class MemoryCore {
 
   /**
    * Save a memory entry (thread-safe via internal withGroupLock).
-   * - Compaction goes to raw/compaction/, subject entries go to wiki/
-   * - type field = subject (user / project / agent-feedback / reference / compaction)
-   * - tier field = recall strategy (L1 = always injected, L2 = on-demand, default L2)
-   * - tags = additional free-form tags (no subject encoding)
+   *
+   * Structured input: writers pass `primary` (the memory itself) and optional
+   * `context` (the conversation that produced it). Rendered into one markdown
+   * body with frontmatter.
+   *
+   * Dedup: hash is computed from (type, primary). Existing file in destDir
+   * with the same hash suffix is treated as duplicate and the new write is
+   * skipped (returns null). This lets multiple writers (worth-remembering,
+   * remember_this) race on the same content without polluting.
    */
-  async saveMemory(subject: Subject, content: string, opts?: { tier?: Tier; tags?: string[] }): Promise<string> {
+  async saveMemory(input: SaveMemoryInput): Promise<string | null> {
     return withGroupLock(this.groupDir, async () => {
-      let destDir: string;
-      if (subject === "compaction") {
-        destDir = join(this.rawDir, "compaction");
-      } else {
-        destDir = this.knowledgeDir;
-      }
+      const destDir = input.type === "compaction"
+        ? join(this.rawDir, "compaction")
+        : this.knowledgeDir;
       mkdirSync(destDir, { recursive: true });
+
+      const hash = createHash("sha256").update(`${input.type}:${input.primary}`).digest("hex").slice(0, 8);
+
+      // Dedup: any existing file with this hash suffix means we've already saved this content.
+      try {
+        const existing = readdirSync(destDir).find((f) => f.endsWith(`_${hash}.md`));
+        if (existing) return null;
+      } catch { /* destDir freshly created, no existing files */ }
 
       const now = new Date();
       const timestamp = now.toISOString().replace(/[:.]/g, "-");
-      const hash = createHash("sha256").update(content).digest("hex").slice(0, 8);
       const fileName = `${timestamp}_${hash}.md`;
       const filePath = join(destDir, fileName);
 
-      // type = subject, tier = recall strategy (compaction is always L2)
       const frontmatter: Frontmatter = {
         date: now.toISOString(),
-        type: subject,
-        tier: subject === "compaction" ? "L2" : (opts?.tier ?? "L2"),
+        type: input.type,
+        tier: input.type === "compaction" ? "L2" : (input.tier ?? "L2"),
       };
-      if (opts?.tags) frontmatter.tags = opts.tags;
+      if (input.tags?.length) frontmatter.tags = input.tags;
+      if (input.source) frontmatter.source = input.source;
 
-      const raw = serializeFrontmatter(frontmatter, content);
+      const body = renderMemoryBody(input);
+      const raw = serializeFrontmatter(frontmatter, body);
       writeFileSync(filePath, raw, "utf-8");
       try { this.extractTriplesFromFile(filePath); } catch {}
       return filePath;

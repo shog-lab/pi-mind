@@ -2,9 +2,15 @@
  * pi-mind Memory Extension for pi-coding-agent
  *
  * Hooks into agent lifecycle:
- * - turn_end → archive session every N turns
- * - session_compact → auto-save compaction summary + B+D+F maintenance
- * - before_agent_start → detect feedback + inject L1 + L2/L3 memories into system prompt
+ * - before_agent_start → capture user prompt + inject L1 + L2/L3 memories
+ * - turn_end           → archive sessions + capture toolResults into turn state
+ * - agent_end          → run worth-remembering detector + save high-signal memories
+ * - session_compact    → save compaction summary + B+D+F maintenance
+ *
+ * Memory write paths:
+ *   worth-remembering-llm @ agent_end — automatic capture (replaces old feedback-llm)
+ *   remember_this tool                — explicit save by agent / user-prompted agent
+ *   session_compact                    — periodic context-compression summary
  */
 
 import { existsSync, readdirSync, copyFileSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync, appendFileSync, unlinkSync, renameSync, rmdirSync } from "node:fs";
@@ -12,8 +18,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnPi, resolvePiMindDir } from "@shog-lab/pi-utils";
 
-import { MemoryCore, parseFrontmatter, TIER_L1, withGroupLock } from "./core.js";
+import { MemoryCore } from "./core.js";
 import { getAuditStatus, markAuditDone, renderAuditNotice, readMarker, summarizeTokensSince, AUDIT_INTERVAL_HOURS } from "./auto-audit.js";
+import type { Subject, Tier } from "../../lib/schema.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // --- Config ---
@@ -53,47 +60,74 @@ function getSemaphore(): Semaphore {
   return _semaphore;
 }
 
-// --- Feedback detection (LLM-only) ---
+// --- Worth-remembering detection (LLM-only) ---
 //
-// Single layer: qwen2.5:1.5b classifies both whether to remember AND sub-type.
-// Async fire-and-forget, non-blocking, <3s timeout, silent on failure.
-// LLM returns { answer: "是/否", type: "correction|complaint|preference|self-admission" }
-// Regex was removed: both sub-type and recall decisions now via LLM.
+// Replaces the old feedback-llm path. Single detector runs at agent_end:
+// looks at the full turn (user prompt + agent messages + tool results) and
+// decides whether anything is worth crystallizing into long-term memory.
 //
+// Sub-classifies into one of the existing Subject types. Absorbs the four
+// feedback sub-types (correction/complaint/preference/self-admission) as
+// well as new sources (agent reflections, tool-fetched facts, decisions).
+//
+// Same operational shape as the old feedback-llm: async fire-and-forget,
+// 3s timeout, format:json, silent on failure. Logs every decision for audit.
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
 const LLM_MODEL = "qwen2.5:1.5b";
 
-type FeedbackType = "correction" | "complaint" | "preference" | "self-admission";
+const WORTH_REMEMBERING_SUBJECTS = ["user", "project", "agent-feedback", "reference"] as const;
 
-interface LlmFeedbackResult {
+interface WorthRememberingResult {
   shouldRemember: boolean;
-  /** Sub-type: only meaningful when shouldRemember=true */
-  subType: FeedbackType;
+  type: typeof WORTH_REMEMBERING_SUBJECTS[number];
+  primary: string;
+  tier: "L1" | "L2";
+  suggestedTags: string[];
 }
 
-async function detectFeedbackWithLLM(text: string): Promise<LlmFeedbackResult | null> {
+function truncateForLLM(text: string, maxChars: number): string {
+  if (!text) return "";
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars - 20) + "\n...[truncated]";
+}
+
+async function detectWorthRemembering(input: {
+  userPrompt: string;
+  agentMessagesText: string;
+  toolResultsText: string;
+}): Promise<WorthRememberingResult | null> {
   const prompt = [
-    "判断用户输入是否值得记忆为反馈，并分类。",
+    "判断这一轮交互里有没有值得长期记忆的内容。",
     "",
-    "值得记忆（answer=是）：",
-    "  - 纠正 agent 错误（不对、应该是、你搞错了）",
-    "  - 抱怨或不满（太差了、垃圾、根本不行）",
-    "  - 透露偏好或建议（我觉得应该、我更喜欢）",
-    "  - 承认自己错误或收回（抱歉我错了、我收回刚才说的）",
+    "值得记（shouldRemember=true）：",
+    "  - 用户表达偏好/纠错/抱怨（不对、我更喜欢、太差了）",
+    "  - agent 通过工具拿到新事实（文章、文档、命令结果含关键信息）",
+    "  - agent 做出非显然的决策或反思",
+    "  - 多步推理得出有复用价值的结论",
     "",
-    "不值得记忆（answer=否）：",
-    "  - 正常提问和请求（帮我查一下、告诉我怎么做）",
-    "  - 无情绪的闲聊（今天天气不错）",
+    "不值得记（shouldRemember=false）：",
+    "  - 普通问答（用户问怎么做 + agent 解答）",
+    "  - 状态更新（跑完了、读完了）",
+    "  - 已在 conversation 多次出现的内容",
+    "  - 当前 task 临时进展",
     "",
-    "分类（只在answer=是时填写）：",
-    "  correction: 纠正 agent 的错误",
-    "  complaint: 抱怨或不满",
-    "  preference: 透露偏好或建议",
-    "  self-admission: 承认自己错误或收回之前的话",
+    "type 分类（仅当 shouldRemember=true）：",
+    "  user           — 用户偏好/要求/约束",
+    "  project        — 项目代码/架构/技术决策",
+    "  agent-feedback — agent 的决策/反思/学到的方法",
+    "  reference      — 外部知识/文章/文档内容",
     "",
-    `用户输入：${text.slice(0, 1500)}`,
+    "tier：",
+    "  L1 — 仅给持久必备的用户偏好用（agent 每次会话都看到）",
+    "  L2 — 其他一切（默认）",
     "",
-    '回复格式：{"answer": "是"或"否", "type": "correction"|"complaint"|"preference"|"self-admission"}',
+    `=== user prompt ===\n${truncateForLLM(input.userPrompt, 800)}`,
+    "",
+    `=== agent messages ===\n${truncateForLLM(input.agentMessagesText, 2000)}`,
+    "",
+    `=== tool results ===\n${truncateForLLM(input.toolResultsText, 1200)}`,
+    "",
+    '输出 JSON: {"shouldRemember": bool, "type": "user|project|agent-feedback|reference", "primary": "一句话自包含浓缩", "tier": "L1|L2", "suggestedTags": ["1-3个topic词"]}',
   ].join("\n");
 
   try {
@@ -110,27 +144,59 @@ async function detectFeedbackWithLLM(text: string): Promise<LlmFeedbackResult | 
     const data = await resp.json() as { message?: { content?: string } };
     const raw = (data.message?.content ?? "").trim();
 
-    // Parse: Ollama format:json guarantees valid JSON
-    const VALID_TYPES: FeedbackType[] = ["correction", "complaint", "preference", "self-admission"];
-    let shouldRemember = false;
-    let subType: FeedbackType = "preference";
     try {
       const json = JSON.parse(raw);
-      if (json.answer === "是") shouldRemember = true;
-      if (VALID_TYPES.includes(json.type)) subType = json.type;
+      const shouldRemember = json.shouldRemember === true;
+      if (!shouldRemember) return { shouldRemember: false, type: "reference", primary: "", tier: "L2", suggestedTags: [] };
+
+      const type = (WORTH_REMEMBERING_SUBJECTS as readonly string[]).includes(json.type) ? json.type : "reference";
+      const tier = json.tier === "L1" ? "L1" : "L2";
+      const primary = typeof json.primary === "string" ? json.primary.trim() : "";
+      if (!primary) return null;
+      const suggestedTags = Array.isArray(json.suggestedTags)
+        ? json.suggestedTags.filter((t: unknown) => typeof t === "string").slice(0, 3)
+        : [];
+      return { shouldRemember: true, type, primary, tier, suggestedTags };
     } catch {
-      // format:json should guarantee valid JSON; treat parse failure as miss
-      shouldRemember = false;
+      return null;
     }
-    return { shouldRemember, subType };
   } catch {
-    return null; // silent — LLM failure is non-fatal
+    return null;
   }
 }
 
-// Cooldown to avoid writing twice in quick succession
-const recentFeedback: Array<{ timestamp: number }> = [];
-const FEEDBACK_COOLDOWN_MS = 60_000;
+// --- Turn-state cache (per pi process, single agent loop at a time) ---
+//
+// Captured across hooks so agent_end can see what happened during the turn:
+//   before_agent_start → sets lastUserPrompt
+//   turn_end           → appends serialized toolResults
+//   agent_end          → consumes both, then resets
+let lastUserPrompt = "";
+let lastToolResults: string[] = [];
+
+function summarizeToolResult(tr: unknown): string {
+  if (typeof tr === "string") return tr.slice(0, 300);
+  try {
+    return JSON.stringify(tr).slice(0, 300);
+  } catch {
+    return String(tr).slice(0, 300);
+  }
+}
+
+function serializeAgentMessages(messages: unknown[]): string {
+  return messages
+    .map((m) => {
+      if (typeof m === "object" && m !== null) {
+        const msg = m as { role?: string; content?: unknown };
+        const role = msg.role ?? "?";
+        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+        return `[${role}] ${content}`;
+      }
+      return String(m);
+    })
+    .join("\n")
+    .slice(0, 4000);
+}
 
 // --- Turn counter for session archival ---
 
@@ -417,83 +483,6 @@ function quarantineHalfWritten(spawnId: string, taskType: string): void {
   }
 }
 
-// --- Feedback detection (integrated from feedback_tracker) ---
-
-/**
- * Detect and save user feedback as memory entries.
- * Writes via saveMemory so it goes through the subject tag pipeline.
- * Optionally creates a follow-up observation task file.
- * @param caughtBy — detection source: regex (explicit keyword) or llm (implicit/tone)
- */
-async function processFeedback(
-  userText: string,
-  feedbackType: FeedbackType = "preference",
-  caughtBy: "regex" | "llm" = "regex",
-): Promise<void> {
-  await withGroupLock(PI_MIND_DIR, async () => {
-    const mc = getCore();
-
-    // Determine follow-up days from config (default: disabled / 0)
-    let followUpDays = 0;
-    try {
-      const configPath = join(PI_MIND_DIR, "pi-mind-config.json");
-      if (existsSync(configPath)) {
-        const config = JSON.parse(readFileSync(configPath, "utf-8"));
-        followUpDays = config.feedback?.followUpDays ?? 0;
-      }
-    } catch {}
-
-    // Save as memory — goes to knowledge/, type field carries subject, enters L1 pipeline
-    const content = [
-      `## 用户反馈（${feedbackType}）`,
-      "",
-      `- **类型**: ${feedbackType}`,
-      `- **内容**: ${userText}`,
-    ].join("\n");
-
-    // type field = "agent-feedback" (subject axis), tier = L1 (always injected)
-    const tags = [`feedback:${feedbackType}`, `caught:${caughtBy}`];
-    await mc.saveMemory("agent-feedback", content, { tier: TIER_L1, tags });
-
-    // Optional follow-up observation file (only if followUpDays > 0)
-    if (followUpDays > 0) {
-      try {
-        const followUpDir = join(PI_MIND_DIR, "knowledge", "follow-up");
-        mkdirSync(followUpDir, { recursive: true });
-        const ts = new Date().toISOString().replace(/[:.]/g, "-");
-        const slug = userText.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-        const followUpPath = join(followUpDir, `${ts}_${slug}.md`);
-        const followUpDate = new Date(Date.now() + followUpDays * 86400_000).toISOString().slice(0, 10);
-        const body = [
-          "---",
-          `date: ${new Date().toISOString().slice(0, 10)}`,
-          `source: follow-up`,
-          `tags: [subject:user, feedback:${feedbackType}, follow-up]`,
-          "---",
-          "",
-          "## 观察任务",
-          "",
-          `- **反馈类型**: ${feedbackType}`,
-          `- **反馈内容**: ${userText.slice(0, 200)}`,
-          `- **观察期**: ${followUpDays} 天（至 ${followUpDate}）`,
-          `- **验证标准**: 后续 3 次相关交互中用户不再反馈同类问题`,
-          "",
-          "## 验证记录",
-          "",
-          "- [ ] 交互 1：",
-          "- [ ] 交互 2：",
-          "- [ ] 交互 3：",
-          "",
-          "## 结论",
-          "",
-          "- 有效 / 需继续观察 / 已复发",
-        ].join("\n");
-        writeFileSync(followUpPath, body, "utf-8");
-      } catch {}
-    }
-  });
-}
-
 // --- Extension ---
 
 /** Resolve pi-mind's bundled system-prompt.md regardless of symlink chain. */
@@ -532,15 +521,71 @@ export default function memExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "remember_this",
+    label: "Remember This",
+    description: [
+      "Save a piece of content to long-term memory. CALL THIS ONLY when:",
+      "  - The user explicitly asks to remember / save something",
+      "    (e.g. \"记一下\", \"save this\", \"remember this\", \"把这个记下来\")",
+      "  - You just fetched a substantive fact via tool (article, doc, code, data)",
+      "    that has lasting value beyond this conversation",
+      "",
+      "DO NOT CALL for:",
+      "  - Normal task work or status updates",
+      "  - Anything you can re-derive from current code / context",
+      "  - Content already discussed earlier in this conversation",
+      "",
+      "A worth-remembering detector runs automatically at turn end as backup.",
+      "When in doubt, do NOT call — explicit save is for high-signal moments only.",
+      "",
+      "Saved content must be SELF-CONTAINED: a future agent reading only this",
+      "entry (without conversation history) should understand it.",
+    ].join("\n"),
+    parameters: {
+      type: "object",
+      properties: {
+        content: { type: "string", description: "Self-contained text to save. Do not reference conversation context with phrases like \"as I said\" or \"that thing above\"." },
+        type: { type: "string", enum: ["user", "reference", "agent-feedback"], description: "Subject. Default: reference. Use 'user' for user preferences/constraints, 'agent-feedback' for your own decisions/insights." },
+        tier: { type: "string", enum: ["L1", "L2"], description: "L1 = always injected next session (use sparingly, only for durable preferences). L2 = retrieved by relevance (default)." },
+        tags: { type: "array", items: { type: "string" }, description: "1-3 topic keywords to aid future retrieval." },
+      },
+      required: ["content"],
+    },
+    async execute(_id: string, params: { content: string; type?: string; tier?: string; tags?: string[] }) {
+      const validTypes = new Set(["user", "reference", "agent-feedback"]);
+      const type = (params.type && validTypes.has(params.type) ? params.type : "reference") as Subject;
+      const tier = (params.tier === "L1" ? "L1" : "L2") as Tier;
+      const tags = Array.isArray(params.tags) ? params.tags.filter((t) => typeof t === "string").slice(0, 5) : undefined;
+
+      try {
+        const fp = await getCore().saveMemory({
+          type,
+          primary: params.content,
+          context: {
+            userPrompt: lastUserPrompt || undefined,
+            toolResults: lastToolResults.length ? [...lastToolResults] : undefined,
+          },
+          tier,
+          tags,
+          source: "explicit",
+        });
+        const text = fp ? `Saved to ${fp}` : "Skipped (duplicate of existing memory)";
+        logMaintenance("remember-this", { saved: !!fp, type, tier });
+        return { content: [{ type: "text" as const, text }], details: {} };
+      } catch (e) {
+        return { content: [{ type: "text" as const, text: `Save failed: ${String(e)}` }], details: {} };
+      }
+    },
+  });
+
   // On compaction: save summary + do B+D+F maintenance
   pi.on("session_compact", async (event) => {
     const summary = event.compactionEntry.summary;
 
     // 1. Save compaction summary + 3. D: sync index — both are now self-locking
     try {
-      // saveMemory and syncIndex each acquire the group lock internally.
-      // The reentrant lock lets them nest safely.
-      await getCore().saveMemory("compaction", summary);
+      await getCore().saveMemory({ type: "compaction", primary: summary, source: "compaction" });
       await getCore().syncIndex();
       logMaintenance("D", { synced: true });
     } catch (e) {
@@ -567,48 +612,66 @@ export default function memExtension(pi: ExtensionAPI) {
     sweepSpawns();
   });
 
-  // Archive session every N turns (non-blocking, no spawn)
-  pi.on("turn_end", () => {
+  // turn_end: archive session every N turns + capture toolResults into the
+  // turn-state cache for agent_end's worth-remembering detector.
+  pi.on("turn_end", (event) => {
     turnCount++;
     if (turnCount % ARCHIVE_EVERY_N_TURNS === 0) {
-      try {
-        archiveSession();
-      } catch {}
+      try { archiveSession(); } catch {}
     }
+    const toolResults = (event as { toolResults?: unknown[] }).toolResults;
+    if (Array.isArray(toolResults)) {
+      for (const tr of toolResults) {
+        lastToolResults.push(summarizeToolResult(tr));
+      }
+    }
+  });
+
+  // agent_end: run worth-remembering detection over the full turn.
+  // Snapshots state at fire time, resets cache immediately, then runs detection async.
+  pi.on("agent_end", (event) => {
+    const messages = (event as { messages?: unknown[] }).messages ?? [];
+    const snapshot = {
+      userPrompt: lastUserPrompt,
+      agentMessagesText: serializeAgentMessages(messages),
+      toolResultsText: lastToolResults.join("\n"),
+    };
+    lastUserPrompt = "";
+    lastToolResults = [];
+
+    if (!snapshot.userPrompt.trim()) return;
+
+    detectWorthRemembering(snapshot).then(async (result) => {
+      logMaintenance("worth-remembering-llm", {
+        shouldRemember: result?.shouldRemember ?? null,
+        type: result?.type,
+      });
+      if (!result?.shouldRemember) return;
+      try {
+        const fp = await getCore().saveMemory({
+          type: result.type,
+          primary: result.primary,
+          context: {
+            userPrompt: snapshot.userPrompt,
+            toolResults: lastToolResults.length ? lastToolResults : undefined,
+          },
+          tier: result.tier,
+          tags: result.suggestedTags,
+          source: "worth-remembering",
+        });
+        if (fp) logMaintenance("worth-remembering-saved", { file: fp });
+      } catch (e) {
+        logMaintenance("worth-remembering-error", { error: String(e) });
+      }
+    }).catch(() => { /* silent — Ollama unavailable is non-fatal */ });
   });
 
   // Inject memories before agent starts processing
   pi.on("before_agent_start", async (event) => {
     const userText = (event as { prompt?: string }).prompt ?? "";
-    const nowMs = Date.now();
 
-    // Feedback detection — LLM-only (qwen2.5:1.5b via Ollama).
-    // Async fire-and-forget, non-blocking. Runs in L1 only (not in L2 sub-agents).
-    // Sub-agents use `pi -p --no-extensions`, so they do NOT run this hook.
-    if (userText.trim().length > 0) {
-      const last = recentFeedback[recentFeedback.length - 1];
-      const cooldownMs = nowMs - (last?.timestamp ?? 0);
-
-      if (cooldownMs >= FEEDBACK_COOLDOWN_MS * 0.8) {
-        detectFeedbackWithLLM(userText).then(async (result) => {
-          // Log LLM decision for audit (every call, not just saves)
-          // shouldRemember: null = LLM call failed (Ollama down / timeout)
-          // daily-audit monitors null rate as Ollama health signal
-          logMaintenance("feedback-llm", {
-            shouldRemember: result?.shouldRemember ?? null,
-          });
-          if (result?.shouldRemember) {
-            const lastEntry = recentFeedback[recentFeedback.length - 1];
-            if (!lastEntry || Date.now() - lastEntry.timestamp >= FEEDBACK_COOLDOWN_MS) {
-              recentFeedback.push({ timestamp: Date.now() });
-              await processFeedback(userText, result.subType, "llm");
-            }
-          }
-        }).catch((err) => {
-          console.warn("[memory] LLM feedback detection failed:", err?.message ?? err);
-        });
-      }
-    }
+    // Capture user prompt into turn-state cache for agent_end's detector.
+    lastUserPrompt = userText;
 
     const mc = getCore();
     // syncIndex is self-locking — safe without outer lock wrapper
