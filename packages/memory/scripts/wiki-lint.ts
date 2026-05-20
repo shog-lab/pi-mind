@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { VALID_SUBJECTS, VALID_TIERS, LEGACY_L1_TYPES, LEGACY_TYPE_MAP, normalizeSubject } from "../lib/schema.js";
+import { forgetOldMemories, resetForgetCounter, type ForgetResult } from "../lib/forget.js";
 
 // --- Frontmatter parser ---
 
@@ -360,13 +361,25 @@ function runLint(knowledgeDir: string, fixMode: boolean, dryRun: boolean): void 
 const args = process.argv.slice(2);
 const FIX_MODE = args.includes("--fix");
 const DRY_RUN = args.includes("--dry-run");
+const PRUNE_MODE = args.includes("--prune");
+const APPLY = args.includes("--apply");
 
 if (args.includes("--help") || args.includes("-h")) {
   console.error("Usage:");
   console.error("  npx pi-mind-lint                       # validate $PI_MIND_DIR/knowledge");
   console.error("  npx pi-mind-lint --fix                 # auto-fix schema");
   console.error("  npx pi-mind-lint --dry-run --fix       # preview fixes");
+  console.error("  npx pi-mind-lint --prune               # show what would be deleted (dry-run by default)");
+  console.error("  npx pi-mind-lint --prune --apply       # really delete stale memories + raw files");
   console.error("  npx pi-mind-lint --dir <abs-path>      # validate a custom dir");
+  process.exit(0);
+}
+
+// Resolve $PI_MIND_DIR once; used by both lint (knowledge subdir) and prune (whole dir).
+const piMindDir = process.env.PI_MIND_DIR ?? path.join(process.cwd(), ".pi-mind");
+
+if (PRUNE_MODE) {
+  runPrune(piMindDir, !APPLY);
   process.exit(0);
 }
 
@@ -376,8 +389,34 @@ const dirIdx = args.indexOf("--dir");
 if (dirIdx >= 0 && args[dirIdx + 1]) {
   knowledgeDir = path.resolve(args[dirIdx + 1]);
 } else {
-  const piMindDir = process.env.PI_MIND_DIR ?? path.join(process.cwd(), ".pi-mind");
   knowledgeDir = path.join(piMindDir, "knowledge");
 }
 
 runLint(knowledgeDir, FIX_MODE, DRY_RUN);
+
+function runPrune(piMindDir: string, dryRun: boolean): void {
+  const label = dryRun ? "DRY-RUN" : "APPLY";
+  console.log(`pi-mind-lint --prune (${label})  PI_MIND_DIR=${piMindDir}`);
+  const result: ForgetResult = forgetOldMemories(piMindDir, { dryRun });
+
+  console.log("");
+  console.log(`Would delete ${result.deletedCount} file(s):`);
+  console.log(`  knowledge/         : ${result.byCategory.knowledge}`);
+  console.log(`  raw/compaction/    : ${result.byCategory.rawCompaction}`);
+  console.log(`  raw/sessions/      : ${result.byCategory.rawSessions}`);
+  console.log(`  raw/maintenance-log: ${result.byCategory.rawMaintenanceLog}`);
+
+  if (result.deletedCount > 0 && dryRun) {
+    console.log("");
+    console.log("Files (first 20):");
+    for (const f of result.files.slice(0, 20)) console.log(`  ${f}`);
+    if (result.files.length > 20) console.log(`  ... and ${result.files.length - 20} more`);
+    console.log("");
+    console.log("Re-run with --apply to actually delete.");
+  } else if (!dryRun) {
+    console.log("");
+    console.log(`Deleted ${result.deletedCount} file(s).`);
+    // Reset hook-internal counter so saveMemory's auto-forget doesn't re-fire shortly.
+    resetForgetCounter(piMindDir, result.deletedCount);
+  }
+}

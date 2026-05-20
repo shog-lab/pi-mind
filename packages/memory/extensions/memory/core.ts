@@ -26,6 +26,7 @@ import Database from "better-sqlite3";
 import { resolvePiMindDir } from "@shog-lab/pi-utils";
 import { KnowledgeGraph } from "./knowledge-graph.js";
 import { LEGACY_L1_TYPES, Subject, Tier } from "../../lib/schema.js";
+import { bumpAndMaybeForget } from "../../lib/forget.js";
 
 // --- Types ---
 
@@ -615,6 +616,10 @@ export class MemoryCore {
       const raw = serializeFrontmatter(frontmatter, body);
       writeFileSync(filePath, raw, "utf-8");
       try { this.extractTriplesFromFile(filePath); } catch {}
+      // Bump the persistent write counter; auto-runs forget on threshold.
+      // Best-effort — failures here are non-fatal (filesystem hiccup, marker
+      // unwritable, etc.). saveMemory's own success path is already complete.
+      try { bumpAndMaybeForget(this.groupDir); } catch {}
       return filePath;
     });
   }
