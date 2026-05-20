@@ -36,7 +36,9 @@ const PI_MIND_DIR = resolvePiMindDir();
 const DB_PATH = join(PI_MIND_DIR, ".pi-mind-index.db");
 const LEGACY_MEMORY_DIR = join(PI_MIND_DIR, "memory");
 const LEGACY_LLM_WIKI_DIR = join(PI_MIND_DIR, "llm-wiki");
-const MIN_SCORE_THRESHOLD = 0.001;
+// MIN_SCORE_THRESHOLD was moved into MemoryCore.buildContext / searchFTS5 —
+// the hook used to enforce a 0.001 score floor on its hand-rolled FTS5
+// loop. The hybrid pipeline applies its own thresholds via WikiConfig.
 
 // --- Semaphore for concurrent L2 task limiting ---
 
@@ -627,6 +629,49 @@ export default function memExtension(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerTool({
+    name: "recall_memory",
+    label: "Recall Memory",
+    description: [
+      "Search long-term memory for entries relevant to a query. Returns a",
+      "formatted context block with the top matches across vector, FTS5,",
+      "[[link]] graph expansion, and knowledge-graph entity facts.",
+      "",
+      "Use this when:",
+      "  - You need to verify a fact mid-task that the auto-injected memory didn't surface",
+      "  - The user references a past discussion / preference / decision and you want to look it up",
+      "  - You're about to make a decision and want to know if past memory has bearing",
+      "  - A tool result mentions an entity (person, project, term) you may already know about",
+      "",
+      "Do NOT use this when:",
+      "  - The auto-injected memory at turn start already answered the question",
+      "  - You're just exploring; trust the auto-RAG unless you have a specific gap",
+      "",
+      "Returns an empty result silently if nothing relevant matches.",
+    ].join("\n"),
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Natural-language query. Be specific — vague queries return noise." },
+        max_results: { type: "number", description: "Soft cap on retrieved entries. Default and recommended: leave unset; the pipeline applies its own token budget." },
+      },
+      required: ["query"],
+    },
+    async execute(_id: string, params: { query: string; max_results?: number }) {
+      try {
+        // skipL1: L1 entries were already injected at turn start; emitting
+        // them again from the tool just duplicates context the agent has.
+        const ctx = await getCore().buildContext(params.query, { skipL1: true });
+        logMaintenance("recall-memory", { hit: !!ctx, queryLen: params.query.length });
+        const text = ctx || "(no relevant memory found)";
+        return { content: [{ type: "text" as const, text }], details: {} };
+      } catch (e) {
+        logMaintenance("recall-memory-error", { error: String(e) });
+        return { content: [{ type: "text" as const, text: `recall_memory failed: ${String(e)}` }], details: {} };
+      }
+    },
+  });
+
   // On compaction: save summary + do B+D+F maintenance
   pi.on("session_compact", async (event) => {
     const summary = event.compactionEntry.summary;
@@ -741,63 +786,12 @@ export default function memExtension(pi: ExtensionAPI) {
     const auditNotice = renderAuditNotice(auditStatus, tokenSummary);
     if (auditNotice) parts.push(auditNotice);
 
-    // L1: Always inject preferences, decisions, facts
-    const l1Entries = mc.loadL1();
-    if (l1Entries.length > 0) {
-      const lines = ["<critical-memory>"];
-      let totalTokens = 0;
-      for (const entry of l1Entries) {
-        const tokens = Math.ceil(entry.content.length / 4);
-        if (totalTokens + tokens > 2000 && lines.length > 1) break;
-        // entry.type IS the subject axis
-        lines.push(`\n### ${entry.type} (${entry.date.slice(0, 10)})\n`);
-        lines.push(entry.content);
-        totalTokens += tokens;
-      }
-      lines.push("\n</critical-memory>");
-      parts.push(lines.join("\n"));
-    }
-
-    // L2/L3: Query-relevant search (FTS5)
-    const l1Paths = new Set(l1Entries.map((e) => e.filePath));
-    const searchResults = mc.searchFTS5((event as { prompt?: string }).prompt ?? "")
-      .filter((r) => r.score >= MIN_SCORE_THRESHOLD && !l1Paths.has(r.entry.filePath));
-
-    if (searchResults.length > 0) {
-      const lines = ["<long-term-memory>"];
-      for (const { entry, score } of searchResults) {
-        // entry.type IS the subject axis
-        const meta = [`subject=${entry.type}`, `date=${entry.date.slice(0, 10)}`];
-        if (entry.tags?.length) {
-          meta.push(`tags=${entry.tags.join(",")}`);
-        }
-        lines.push(`\n### Memory (${meta.join(" | ")} | relevance=${score.toFixed(2)})\n`);
-        lines.push(entry.content);
-      }
-      lines.push("\n</long-term-memory>");
-      parts.push(lines.join("\n"));
-    }
-
-    // [[link]] resolution
-    const seenPaths = new Set([...l1Paths, ...searchResults.map((r) => r.entry.filePath)]);
-    const linkedEntries = [];
-    for (const { entry } of searchResults) {
-      for (const linked of mc.resolveLinkedContent(entry.content)) {
-        if (!seenPaths.has(linked.filePath)) {
-          seenPaths.add(linked.filePath);
-          linkedEntries.push(linked);
-        }
-      }
-    }
-    if (linkedEntries.length > 0) {
-      const lines = ["<linked-memory>"];
-      for (const entry of linkedEntries) {
-        lines.push(`\n### ${entry.date.slice(0, 10)}\n`);
-        lines.push(entry.content);
-      }
-      lines.push("\n</linked-memory>");
-      parts.push(lines.join("\n"));
-    }
+    // Hybrid retrieval: L1 + vector (primary) / FTS5 (fallback) +
+    // [[link]] expansion + KG entity facts. Delegates to MemoryCore's
+    // buildContext so the hook and the recall_memory tool share a single
+    // pipeline implementation.
+    const hybridContext = await mc.buildContext((event as { prompt?: string }).prompt ?? "");
+    if (hybridContext) parts.push(hybridContext);
 
     if (parts.length > 0) {
       event.injectContext?.(parts.join("\n"));

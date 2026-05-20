@@ -541,6 +541,13 @@ export class MemoryCore {
         }
       }
 
+      // Persist any queued embeddings now. Previously flushEmbeddings was
+      // only called from buildContext, which the production hook bypassed —
+      // result was that memory_vectors stayed empty forever even though
+      // every saveMemory and every syncIndex iteration queued entries.
+      // Flushing here makes vector search actually usable.
+      try { await this.flushEmbeddings(); } catch { /* Ollama may be down; non-fatal */ }
+
       // Auto-generate wiki/index.md
       this.generateIndex(files);
     });
@@ -991,12 +998,24 @@ export class MemoryCore {
 
   // --- Build full context ---
 
-  async buildContext(query: string): Promise<string> {
+  /**
+   * Build a context block from the hybrid retrieval pipeline (L1 + vector +
+   * FTS5 + [[link]] expansion + KG). Used by:
+   *   - the before_agent_start hook for automatic RAG injection
+   *   - the remember_this and recall_memory tools
+   *
+   * skipL1=true is for callers that already injected L1 separately (the tool
+   * path: the hook already injected L1 at turn start, so the tool result
+   * shouldn't repeat it). The set of L1 file paths is still returned via
+   * the L1 dedup logic so that L2/[[link]] don't re-emit them.
+   */
+  async buildContext(query: string, opts: { skipL1?: boolean } = {}): Promise<string> {
     const parts: string[] = [];
+    const skipL1 = opts.skipL1 ?? false;
 
     // L1: always-loaded critical memories
     const l1Entries = this.loadL1();
-    if (l1Entries.length > 0) {
+    if (!skipL1 && l1Entries.length > 0) {
       const l1Lines = ["<critical-memory>"];
       let l1Tokens = 0;
       for (const entry of l1Entries) {
@@ -1012,6 +1031,8 @@ export class MemoryCore {
     }
 
     // L2/L3: Vector search (primary), FTS5 (fallback)
+    // Even when skipL1 is true we still load L1 paths so L2 search results
+    // don't re-emit content the agent already has in its injected L1 block.
     const l1Paths = new Set(l1Entries.map((e) => e.filePath));
     await this.flushEmbeddings();
     let searchResults = await this.searchVector(query);
