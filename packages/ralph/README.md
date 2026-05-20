@@ -14,7 +14,7 @@ npm i -D @shog-lab/pi-goals
 pi -p "use prd skill and create a PRD for login feature"
 
 # Convert to prd.json
-pi -p "use ralph skill and convert tasks/prd-login.md to prd.json"
+pi -p "use prd-compile skill and convert tasks/prd-login.md to prd.json"
 
 # Run the goal loop
 pi -p "goal --from prd.json"
@@ -64,7 +64,8 @@ continue.
 | Skill | Purpose |
 |---|---|
 | `prd` | Generate Product Requirements Documents |
-| `ralph` | Convert markdown PRD to `prd.json` format |
+| `prd-compile` | Compile a markdown PRD into `prd.json` (was named `ralph` before 0.1.2) |
+| `goals-verify` | Restricted tool allowlist for verification sub-agents (Read/Bash/Grep/Find/understand_image only) |
 
 ## Directory Structure
 

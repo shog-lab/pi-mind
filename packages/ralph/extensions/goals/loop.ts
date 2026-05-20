@@ -297,8 +297,14 @@ function parseChangedFilesFromGit(stdout: string, cwd: string): string[] {
 }
 
 /**
- * @deprecated Use parseChangedFilesFromGit() instead — this regex is fragile.
- * Kept only as fallback.
+ * Last-resort regex parser for `Changed files: [...]` lines in agent output.
+ * Called by parseChangedFilesFromGit() when `git diff --name-only` returned
+ * nothing — no working tree, no git binary, or git failed. Fragile (only
+ * catches one specific format the execution sub-agent emits) but better
+ * than reporting zero changes when files actually changed.
+ *
+ * (Was tagged @deprecated, but that was misleading: the primary path still
+ * delegates here on git failure, so the function is intentionally kept.)
  */
 function parseChangedFilesFallback(output: string): string[] {
   const match = output.match(/Changed files:\s*\[(.*?)\]/);

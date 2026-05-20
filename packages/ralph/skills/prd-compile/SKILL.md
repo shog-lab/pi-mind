@@ -1,16 +1,18 @@
 ---
-name: ralph
-description: Convert a markdown PRD to prd.json format for Ralph goal execution.
+name: prd-compile
+description: Compile a markdown PRD into the prd.json format the goal loop consumes.
 ---
 
-# Ralph Skill
+# prd-compile Skill
 
-Convert a markdown PRD document to `prd.json` format, which the `/goal` command uses to drive the autonomous loop.
+Compile a markdown PRD document into `prd.json`, the structured format the `/goal` command uses to drive the autonomous loop.
+
+(Previously named `ralph` after the package codename; renamed for clarity since the name didn't describe what the skill does.)
 
 ## Usage
 
 ```
-Load the ralph skill and convert <path-to-prd.md> to prd.json
+Load the prd-compile skill and convert <path-to-prd.md> to prd.json
 ```
 
 ## What it does
@@ -48,7 +50,7 @@ Load the ralph skill and convert <path-to-prd.md> to prd.json
 ## Example
 
 ```bash
-Load the ralph skill and convert tasks/prd-login.md to prd.json
+Load the prd-compile skill and convert tasks/prd-login.md to prd.json
 ```
 
 This creates `prd.json` in the current directory.
