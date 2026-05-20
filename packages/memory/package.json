@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-mind-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Give pi a mind: portable memory and self-evolution as a drop-in pi-coding-agent extension.",
   "type": "module",
   "license": "MIT",
