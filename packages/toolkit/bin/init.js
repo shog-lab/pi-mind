@@ -67,6 +67,24 @@ function ensureDir(p) {
 function linkInto(srcDir, destDir) {
   if (!existsSync(srcDir)) return;
   ensureDir(destDir);
+
+  // First pass: sweep dangling symlinks in destDir. Catches the case where
+  // an extension was renamed or removed between package versions — the old
+  // symlink still exists but points at nothing. Only touches symlinks (not
+  // user-managed directories or files).
+  for (const name of readdirSync(destDir)) {
+    const dest = join(destDir, name);
+    try {
+      readlinkSync(dest); // throws if dest is not a symlink
+    } catch {
+      continue; // not a symlink — leave alone
+    }
+    if (!existsSync(dest)) {
+      // existsSync returns false for dangling symlinks
+      try { unlinkSync(dest); console.log(`[pi-toolkit] removed dangling ${relative(HOST_ROOT, dest)}`); } catch {}
+    }
+  }
+
   for (const name of readdirSync(srcDir)) {
     const src = join(srcDir, name);
     if (!statSync(src).isDirectory()) continue;

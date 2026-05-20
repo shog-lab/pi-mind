@@ -6,12 +6,14 @@ A drop-in package adding several commonly-used external tool integrations to any
 
 ## Extensions
 
-| Extension | Tool name(s) | Backend | Required env |
+| Extension (dir) | Tool name(s) | Backend | Required env |
 |---|---|---|---|
-| `web_search` | `web_search` | mmx CLI | (mmx config) |
-| `understand_image` | `understand_image` | mmx vision CLI | (mmx config) |
+| `web-search` | `web_search` | mmx CLI | (mmx config) |
+| `understand-image` | `understand_image` | mmx vision CLI | (mmx config) |
 | `mcp-bridge` | `<server>_<tool>` per MCP server | Any MCP server | `mcp-servers.json` config |
 | `subagent` | `spawn_subagent` | child pi process | (none) |
+
+Dir names are kebab-case (matching the convention used by `pi-mind`'s extensions and skills). Tool names stay `snake_case` so the LLM-facing surface is stable across this rename.
 
 `mcp-bridge` silently skips registration when no `mcp-servers.json` exists, so install pi-toolkit even if you only use some extensions.
 

@@ -81,7 +81,7 @@ export default function subagentExtension(pi: ExtensionAPI) {
       // Load basic work tools — explicitly excludes memory (sub-agents must not touch parent memory).
       // Browser automation belongs in pi-chrome, not pi-mind, so it isn't loaded here;
       // a sub-agent that needs the browser should be spawned from a pi-chrome-aware caller.
-      const basicExts = ["web_search"];
+      const basicExts = ["web-search"];
       for (const ext of basicExts) {
         const extPath = resolveExtensionPath(ext);
         if (extPath) args.push("-e", extPath);
