@@ -71,6 +71,7 @@ export interface ForgetResult {
     rawCompaction: number;
     rawSessions: number;
     rawMaintenanceLog: number;
+    rawImages: number;
   };
   /** Paths that were (or would be) deleted. */
   files: string[];
@@ -157,7 +158,11 @@ export function forgetOldMemories(
   const dryRun = opts.dryRun ?? false;
   const now = Date.now();
   const files: string[] = [];
-  const byCategory = { knowledge: 0, rawCompaction: 0, rawSessions: 0, rawMaintenanceLog: 0 };
+  const byCategory = { knowledge: 0, rawCompaction: 0, rawSessions: 0, rawMaintenanceLog: 0, rawImages: 0 };
+
+  // Track which knowledge files are getting deleted so we can later assess
+  // image orphans against the surviving set.
+  const deletedKnowledgeFiles = new Set<string>();
 
   // 1. knowledge/ — frontmatter date + type
   const knowledgeDir = join(piMindDir, "knowledge");
@@ -168,6 +173,7 @@ export function forgetOldMemories(
       const verdict = shouldDeleteKnowledgeFile(fp, now);
       if (verdict) {
         files.push(fp);
+        deletedKnowledgeFiles.add(fp);
         byCategory.knowledge++;
       }
     }
@@ -205,6 +211,25 @@ export function forgetOldMemories(
       if (mtimeAgeDays(fp, now) > RETENTION.rawMaintenanceLogDays) {
         files.push(fp);
         byCategory.rawMaintenanceLog++;
+      }
+    }
+  }
+
+  // 5. raw/images/ — orphan cleanup. An image is orphan if no surviving
+  // knowledge file references it via `image:` frontmatter. We compute
+  // "surviving" as (current set on disk) minus (just-decided-to-delete set).
+  const imagesDir = join(piMindDir, "raw", "images");
+  if (existsSync(imagesDir) && existsSync(knowledgeDir)) {
+    const referenced = collectReferencedImages(knowledgeDir, deletedKnowledgeFiles);
+    for (const file of safeReaddir(imagesDir)) {
+      const fp = join(imagesDir, file);
+      try {
+        if (!statSync(fp).isFile()) continue;
+      } catch { continue; }
+      const relPath = `raw/images/${file}`;
+      if (!referenced.has(relPath)) {
+        files.push(fp);
+        byCategory.rawImages++;
       }
     }
   }
@@ -277,6 +302,36 @@ function shouldDeleteKnowledgeFile(filePath: string, now: number): boolean {
   if (threshold == null) return false; // protected type or unknown — don't touch
   const ageDays = (now - new Date(dateStr).getTime()) / 86400_000;
   return Number.isFinite(ageDays) && ageDays > threshold;
+}
+
+/**
+ * Walk knowledge/ and collect every "raw/images/..." path referenced by a
+ * surviving (not-being-deleted) .md file's `image:` frontmatter field.
+ *
+ * Returns relative paths (e.g. "raw/images/abc.png") to match the format
+ * saveMemory writes into the frontmatter.
+ */
+function collectReferencedImages(knowledgeDir: string, deletedFiles: Set<string>): Set<string> {
+  const referenced = new Set<string>();
+  for (const file of safeReaddir(knowledgeDir)) {
+    if (!file.endsWith(".md")) continue;
+    const fp = join(knowledgeDir, file);
+    if (deletedFiles.has(fp)) continue;
+    let raw: string;
+    try { raw = readFileSync(fp, "utf-8"); } catch { continue; }
+    if (!raw.startsWith("---")) continue;
+    const endIdx = raw.indexOf("\n---", 3);
+    if (endIdx === -1) continue;
+    for (const line of raw.slice(4, endIdx).split("\n")) {
+      const t = line.trim();
+      if (t.startsWith("image:")) {
+        const val = t.slice(6).trim();
+        if (val) referenced.add(val);
+        break;
+      }
+    }
+  }
+  return referenced;
 }
 
 function collectStaleSessionFiles(dir: string, now: number): string[] {

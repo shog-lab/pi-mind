@@ -25,6 +25,7 @@ import { MemoryCore } from "./core.js";
 import { getAuditStatus, markAuditDone, renderAuditNotice, readMarker, summarizeTokensSince, AUDIT_INTERVAL_HOURS } from "./auto-audit.js";
 import type { Subject, Tier } from "../../lib/schema.js";
 import { encodeCwdPrefix, isOwnSessionDir } from "../../lib/session-archive.js";
+import { storeImage } from "../../lib/image-store.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // --- Config ---
@@ -589,22 +590,42 @@ export default function memExtension(pi: ExtensionAPI) {
       "",
       "Saved content must be SELF-CONTAINED: a future agent reading only this",
       "entry (without conversation history) should understand it.",
+      "",
+      "If passing image_path, content MUST include a description of what's in",
+      "the image (call understand_image first to generate one). The image",
+      "itself is stored alongside the entry; without a textual description",
+      "the entry is not retrievable — FTS5 and vector search only see text.",
     ].join("\n"),
     parameters: {
       type: "object",
       properties: {
-        content: { type: "string", description: "Self-contained text to save. Do not reference conversation context with phrases like \"as I said\" or \"that thing above\"." },
+        content: { type: "string", description: "Self-contained text to save. Do not reference conversation context with phrases like \"as I said\" or \"that thing above\". If saving alongside an image, include a description of the image." },
         type: { type: "string", enum: ["user", "reference", "agent-feedback"], description: "Subject. Default: reference. Use 'user' for user preferences/constraints, 'agent-feedback' for your own decisions/insights." },
         tier: { type: "string", enum: ["L1", "L2"], description: "L1 = always injected next session (use sparingly, only for durable preferences). L2 = retrieved by relevance (default)." },
         tags: { type: "array", items: { type: "string" }, description: "1-3 topic keywords to aid future retrieval." },
+        image_path: { type: "string", description: "Optional absolute path to an image (.png/.jpg/.jpeg/.gif/.webp). The file will be copied into pi-mind's content-addressed image store and linked from the memory entry. Files >2MB are auto-compressed; >20MB are rejected." },
       },
       required: ["content"],
     },
-    async execute(_id: string, params: { content: string; type?: string; tier?: string; tags?: string[] }) {
+    async execute(_id: string, params: { content: string; type?: string; tier?: string; tags?: string[]; image_path?: string }) {
       const validTypes = new Set(["user", "reference", "agent-feedback"]);
       const type = (params.type && validTypes.has(params.type) ? params.type : "reference") as Subject;
       const tier = (params.tier === "L1" ? "L1" : "L2") as Tier;
       const tags = Array.isArray(params.tags) ? params.tags.filter((t) => typeof t === "string").slice(0, 5) : undefined;
+
+      // Image handling: validate + (optionally compress) + copy into raw/images/.
+      // If image storage fails, abort the entire save — agent decided the image
+      // was worth keeping, so a description-only save would silently lose that.
+      let imageRelPath: string | undefined;
+      if (params.image_path) {
+        const result = await storeImage(params.image_path, PI_MIND_DIR);
+        if (!result.ok) {
+          logMaintenance("remember-this-image-error", { reason: result.reason, detail: result.detail.slice(0, 200) });
+          return { content: [{ type: "text" as const, text: `image storage failed (${result.reason}): ${result.detail}` }], details: {}, isError: true as const };
+        }
+        imageRelPath = result.relPath;
+        logMaintenance("remember-this-image-stored", { relPath: result.relPath, bytes: result.bytes, compressed: result.compressed });
+      }
 
       try {
         const fp = await getCore().saveMemory({
@@ -614,14 +635,17 @@ export default function memExtension(pi: ExtensionAPI) {
           tier,
           tags,
           source: "explicit",
+          image: imageRelPath,
         });
         // Only mark the explicit-save flag when the write actually landed.
         // Dedup hits (fp=null) leave the flag false so the auto detector still
         // runs as backup, which is the intent: an existing memory shouldn't
         // suppress new ones from later in the same turn.
         if (fp) explicitSaveFiredThisAgentLoop = true;
-        const text = fp ? `Saved to ${fp}` : "Skipped (duplicate of existing memory)";
-        logMaintenance("remember-this", { saved: !!fp, type, tier });
+        const text = fp
+          ? (imageRelPath ? `Saved to ${fp} (image at ${imageRelPath})` : `Saved to ${fp}`)
+          : "Skipped (duplicate of existing memory)";
+        logMaintenance("remember-this", { saved: !!fp, type, tier, hasImage: !!imageRelPath });
         return { content: [{ type: "text" as const, text }], details: {} };
       } catch (e) {
         return { content: [{ type: "text" as const, text: `Save failed: ${String(e)}` }], details: {} };

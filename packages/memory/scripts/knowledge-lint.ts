@@ -405,6 +405,7 @@ function runPrune(piMindDir: string, dryRun: boolean): void {
   console.log(`  raw/compaction/    : ${result.byCategory.rawCompaction}`);
   console.log(`  raw/sessions/      : ${result.byCategory.rawSessions}`);
   console.log(`  raw/maintenance-log: ${result.byCategory.rawMaintenanceLog}`);
+  console.log(`  raw/images/ orphans: ${result.byCategory.rawImages}`);
 
   if (result.deletedCount > 0 && dryRun) {
     console.log("");

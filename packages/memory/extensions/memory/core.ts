@@ -70,16 +70,37 @@ export interface SaveMemoryInput {
   tags?: string[];
   /** Informational: which writer produced this (worth-remembering, explicit, compaction, ...) */
   source?: string;
+  /**
+   * Path (relative to PI_MIND_DIR, e.g. "raw/images/abc123.png") to an
+   * image that lives alongside this memory entry. The image itself is
+   * stored by the caller (typically via lib/image-store.ts) before
+   * saveMemory is invoked; this field only records the link in frontmatter.
+   */
+  image?: string;
 }
 
 function renderMemoryBody(input: SaveMemoryInput): string {
   const ctx = input.context;
   const hasContext = !!(ctx && (ctx.userPrompt || ctx.priorAgentMessage));
-  if (!hasContext) return input.primary;
+  const hasImage = !!input.image;
+  if (!hasContext && !hasImage) return input.primary;
 
-  const lines = [input.primary, "", "## Context", ""];
-  if (ctx!.userPrompt) lines.push(`- **User prompt**: ${ctx!.userPrompt}`);
-  if (ctx!.priorAgentMessage) lines.push(`- **Prior agent message**: ${ctx!.priorAgentMessage}`);
+  const lines: string[] = [input.primary];
+
+  if (hasImage) {
+    // Render a markdown image link so the file is self-contained when viewed
+    // outside pi-mind (any markdown viewer can show it). The path is PI_MIND_DIR-
+    // relative (e.g. "raw/images/abc.png"); from the .md file's location
+    // (knowledge/), "../" reaches the .pi-mind root.
+    lines.push("", `![](../${input.image})`);
+  }
+
+  if (hasContext) {
+    lines.push("", "## Context", "");
+    if (ctx!.userPrompt) lines.push(`- **User prompt**: ${ctx!.userPrompt}`);
+    if (ctx!.priorAgentMessage) lines.push(`- **Prior agent message**: ${ctx!.priorAgentMessage}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -625,6 +646,7 @@ export class MemoryCore {
       };
       if (input.tags?.length) frontmatter.tags = input.tags;
       if (input.source) frontmatter.source = input.source;
+      if (input.image) frontmatter.image = input.image;
 
       const body = renderMemoryBody(input);
       const raw = serializeFrontmatter(frontmatter, body);
