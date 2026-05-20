@@ -446,11 +446,18 @@ export class MemoryCore {
 
   async syncIndex(): Promise<void> {
     return withGroupLock(this.groupDir, async () => {
+      // Guard: syncIndex is called fire-and-forget from several hooks. By the
+      // time the lock is acquired the MemoryCore may have been disposed (e.g.
+      // pi shutdown, test teardown). Avoid touching a closed DB.
+      if (!this.db.open) return;
+
       const files: string[] = [];
       for (const dir of this.getScanDirs()) {
         files.push(...collectMdFiles(dir));
       }
-      if (files.length === 0) return;
+      // Do NOT early-return on files.length === 0: the cleanup loop below
+      // still needs to evict dangling FTS5 entries when forget (or wiki-lint
+      // --prune) removed every .md file in the scan dirs.
 
       // Build slug index for [[link]] resolution
       this._slugIndex.clear();
