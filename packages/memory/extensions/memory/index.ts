@@ -24,6 +24,7 @@ import { spawnPi, resolvePiMindDir } from "@shog-lab/pi-utils";
 import { MemoryCore } from "./core.js";
 import { getAuditStatus, markAuditDone, renderAuditNotice, readMarker, summarizeTokensSince, AUDIT_INTERVAL_HOURS } from "./auto-audit.js";
 import type { Subject, Tier } from "../../lib/schema.js";
+import { encodeCwdPrefix, isOwnSessionDir } from "../../lib/session-archive.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // --- Config ---
@@ -266,8 +267,25 @@ function copyRecursive(src: string, dest: string): number {
 function archiveSession(): void {
   const sessionsDir = getSessionsDir();
   const archiveDir = getArchiveSessionsDir();
+  if (!existsSync(sessionsDir)) return;
+
+  // Only archive sessions whose cwd belongs to this host repo. pi's global
+  // session directory (~/.pi/agent/sessions/) accumulates one subdir per cwd
+  // across all repos *and* across all subprocess-spawned pi instances (eval
+  // tempdirs, judge, our own L2 subagents). Without this filter every
+  // .pi-mind/raw/sessions/ would end up as a full N-way redundant snapshot
+  // of every cwd that ever ran pi on this machine.
+  const hostRoot = dirname(PI_MIND_DIR); // <host-repo>/.pi-mind → <host-repo>
+  const hostPrefix = encodeCwdPrefix(hostRoot);
+  const excludePrefix = encodeCwdPrefix(PI_MIND_DIR);
+
   mkdirSync(archiveDir, { recursive: true });
-  const copied = copyRecursive(sessionsDir, archiveDir);
+
+  let copied = 0;
+  for (const entry of readdirSync(sessionsDir)) {
+    if (!isOwnSessionDir(entry, hostPrefix, excludePrefix)) continue;
+    copied += copyRecursive(join(sessionsDir, entry), join(archiveDir, entry));
+  }
   if (copied > 0) console.log(`[memory] archived ${copied} session file(s)`);
 }
 
