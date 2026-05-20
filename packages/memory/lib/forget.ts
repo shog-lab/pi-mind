@@ -28,6 +28,8 @@
 
 import {
   existsSync,
+  appendFileSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   rmdirSync,
@@ -215,7 +217,31 @@ export function forgetOldMemories(
     if (existsSync(sessionsDir)) pruneEmptyDirs(sessionsDir, /* keepRoot */ true);
   }
 
+  // Record the run so daily-audit / debugging can see when forget actually
+  // fired and what it did. Logged for both dry-run and apply paths.
+  logForgetRun(piMindDir, { dryRun, deletedCount: files.length, byCategory });
+
   return { dryRun, deletedCount: files.length, byCategory, files };
+}
+
+function logForgetRun(
+  piMindDir: string,
+  detail: { dryRun: boolean; deletedCount: number; byCategory: ForgetResult["byCategory"] },
+): void {
+  const logDir = join(piMindDir, "raw", "maintenance-log");
+  try {
+    mkdirSync(logDir, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const logFile = join(logDir, `${date}.jsonl`);
+    const entry = {
+      timestamp: new Date().toISOString(),
+      action: "forget-run",
+      ...detail,
+    };
+    appendFileSync(logFile, JSON.stringify(entry) + "\n");
+  } catch {
+    // Best-effort — logging is observability, not correctness.
+  }
 }
 
 // --- helpers ---

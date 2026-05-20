@@ -46,17 +46,20 @@ cd ~/my-repo
 npm i -D @shog-lab/pi-mind-core
 
 pi                          # interactive: memory auto-loaded, system prompt injected
-# > "remember that I prefer pm2 over forever for process management"
-# (agent writes to .pi-mind/knowledge/*.md)
+# > "记一下 I prefer pm2 over forever for process management"
+# (agent calls remember_this tool → .pi-mind/knowledge/*.md, source: explicit)
 
 pi -p "what do you know about my preferences?"
-# (agent retrieves and answers)
+# (agent retrieves and answers via L1/L2 injection)
 
-npx pi-mind-lint            # check schema health of knowledge/
-npx pi-mind-cron            # print recommended crontab entries
+npx pi-mind-lint                # validate knowledge schema
+npx pi-mind-lint --prune        # dry-run: show what forget would delete
+npx pi-mind-lint --prune --apply  # really delete stale memories + raw artifacts
 ```
 
-For the daily-audit loop, add the snippet from `npx pi-mind-cron` to your crontab. Typical:
+The forget mechanism runs automatically every 50 writes (see [Self-evolution](#self-evolution)); the manual `--prune` is for emergency cleanup or audit.
+
+Optional cron for daily-audit (no cron is required; the extension is daemon-free):
 
 ```cron
 0 22 * * * cd /path/to/repo && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
@@ -117,16 +120,27 @@ Configure via a `pi-mind-config.json` in `$PI_MIND_DIR/` (auto-loaded). Defaults
 
 ## Self-evolution
 
-Two cron-driven skills keep memory healthy:
+Three mechanisms keep memory healthy. None require a daemon — pi-mind has no background process; everything piggybacks on the natural rhythm of agent interaction.
 
-- **`wiki-lint`** — validates frontmatter, finds duplicates, flags stale entries. With `--fix` it auto-migrates legacy fields.
-- **`daily-audit`** — reviews recent activity, samples LLM feedback decisions for quality, archives old compactions, reports findings.
+- **`wiki-lint`** — validates frontmatter, finds duplicates, flags stale entries. With `--fix` it auto-migrates legacy fields. With `--prune` it deletes age-expired memories + raw artifacts (`--prune --apply` to actually delete; default is dry-run).
+- **`daily-audit`** — agent-executed skill: scans the maintenance log, samples LLM decisions, surfaces problems. Triggered by an "audit overdue" notice the extension injects into the agent's context at `before_agent_start`; the agent decides when to honor it.
+- **Auto-forget** — `saveMemory` increments a persistent counter (`raw/maintenance-log/last-forget.json`); every 50 writes the extension runs `forgetOldMemories()` synchronously and resets. No cron needed.
 
-Both are designed to be triggered by **OS cron**, not by an in-process scheduler — pi-mind has no daemon.
+Retention policy (`lib/forget.ts`):
+
+| Target | Retention |
+|---|---|
+| `knowledge/` type=`user`, `project` | Never auto-deleted (durable preferences / decisions) |
+| `knowledge/` type=`agent-feedback` | Frontmatter date > 60 days |
+| `knowledge/` type=`reference` | Frontmatter date > 90 days |
+| `raw/compaction/*.md` | mtime > 30 days |
+| `raw/sessions/<cwd>/*.jsonl` | mtime > 14 days; empty cwd-dirs pruned |
+| `raw/maintenance-log/*.jsonl` | mtime > 30 days (markers preserved) |
+
+Optional cron — only if you want daily-audit to fire even without an interactive session:
 
 ```cron
 0 22 * * * cd /repo && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
-0 02 * * * cd /repo && npx pi-mind-lint --fix     >> .pi-mind/cron.log 2>&1
 ```
 
 ## Composing with other pi packages
@@ -151,7 +165,7 @@ Two scripts ship for measuring memory quality:
   ```bash
   DEEPSEEK_API_KEY=... npx tsx scripts/run-longmemeval.ts --limit 100
   ```
-- **`scripts/verify-feedback.ts`** — checks the LLM feedback detector's precision/recall against a hand-curated case set. Useful before merging changes to the feedback prompt.
+- **`scripts/verify-worth-remembering.ts`** — checks the LLM detector's precision/recall against a hand-curated case set. Useful before merging changes to the prompt. Run with `PI_MIND_LLM_MODEL=qwen3:4b npm run verify-worth-remembering --workspace=packages/memory`.
 
 Both bypass any container or daemon — they import `MemoryCore` directly. This makes the memory module independently testable.
 
@@ -163,13 +177,17 @@ pi process (the runtime)
 memory extension initializes:
   - reads .pi-mind/ from disk
   - syncs FTS5 + vector index in .pi-mind/.pi-mind-index.db
-  - registers hooks: turn_end / session_compact / before_agent_start
+  - registers hooks: before_agent_start / turn_end / agent_end / session_compact
+  - registers tools: remember_this, mark_daily_audit_complete
   - injects system-prompt.md into agent context (via pi.injectContext)
   ↓
 agent runs:
-  - before each prompt: L1 always-inject + L2 query-relevant retrieval
-  - on session compaction: summary saved + classification spawned
-  - feedback detection: regex + Ollama qwen2.5:1.5b for LLM-tier classification
+  - before_agent_start: L1 always-inject + L2 query-relevant retrieval; cache userPrompt
+  - turn_end: archive sessions (filtered to this host repo only — see lib/session-archive.ts)
+  - agent_end: run worth-remembering-llm (qwen3:4b via Ollama, think:false, keep_alive 30m);
+               skipped if agent already called remember_this this loop
+  - on saveMemory: bump persistent counter; every 50 writes auto-run forgetOldMemories
+  - session_compact: pi-side summary saved to raw/compaction/ + B/F subagent spawn
   ↓ pi process exit
 SQLite + filesystem persist, in-memory state cleared
 ```
@@ -183,7 +201,7 @@ Key implementation notes:
 
 ## Status
 
-Early. The core (memory model, schema, lint, daily-audit) is in active use; APIs may evolve. Tests cover MemoryCore (33), KnowledgeGraph (8), feedback detection, and extensions (120 total, all passing).
+Early. The core (memory model, schema, lint, daily-audit, forget) is in active use; APIs may evolve. Tests cover MemoryCore, KnowledgeGraph, forget mechanism, session-archive filter, and extension behavior (130 total, all passing).
 
 Roadmap (no fixed dates):
 
