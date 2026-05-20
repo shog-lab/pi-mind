@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-mind-core",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Give pi a mind: portable memory and self-evolution as a drop-in pi-coding-agent extension.",
   "type": "module",
   "license": "MIT",
@@ -8,7 +8,7 @@
     "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
     "dev": "tsc --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
-    "lint:wiki": "tsx scripts/wiki-lint.ts",
+    "lint:knowledge": "tsx scripts/knowledge-lint.ts",
     "verify-worth-remembering": "tsx scripts/verify-worth-remembering.ts",
     "test": "vitest run",
     "prepare": "npm run build",

@@ -456,7 +456,7 @@ export class MemoryCore {
         files.push(...collectMdFiles(dir));
       }
       // Do NOT early-return on files.length === 0: the cleanup loop below
-      // still needs to evict dangling FTS5 entries when forget (or wiki-lint
+      // still needs to evict dangling FTS5 entries when forget (or knowledge-lint
       // --prune) removed every .md file in the scan dirs.
 
       // Build slug index for [[link]] resolution

@@ -103,10 +103,10 @@ Episodic entries are not filed by subject — they're chronological. Periodic au
 
 Two mechanisms keep memory healthy. Both run via OS cron, not agent action:
 
-- **wiki-lint** — checks frontmatter validity, finds duplicates, flags stale entries. Runs typically nightly.
+- **knowledge-lint** — checks frontmatter validity, finds duplicates, flags stale entries. Runs typically nightly.
 - **daily-audit** — reviews recent changes (knowledge writes, observations, compaction summaries), promotes patterns, archives obsolete entries.
 
-You may be invoked manually by the user to run these (`use daily-audit skill`, `use wiki-lint skill`). Behave like a careful editor — explain what you change and why.
+You may be invoked manually by the user to run these (`use daily-audit skill`, `use knowledge-lint skill`). Behave like a careful editor — explain what you change and why.
 
 ## Scheduled tasks
 

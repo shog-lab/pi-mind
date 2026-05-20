@@ -4,7 +4,7 @@
  * Two entry points:
  *   bumpAndMaybeForget(piMindDir) — called from saveMemory; auto-runs forget
  *                                   every FORGET_EVERY_N_WRITES writes.
- *   forgetOldMemories(piMindDir, {dryRun}) — manual call from wiki-lint --prune
+ *   forgetOldMemories(piMindDir, {dryRun}) — manual call from knowledge-lint --prune
  *                                            and from the bump path above.
  *
  * Retention policy (intentionally conservative on user/project; aggressive on
@@ -134,7 +134,7 @@ export function bumpAndMaybeForget(piMindDir: string): ForgetResult | null {
 }
 
 /**
- * Explicitly reset the counter without running forget. Used by wiki-lint
+ * Explicitly reset the counter without running forget. Used by knowledge-lint
  * --prune --apply so that hook-driven and manual forget don't double-fire
  * shortly after one another.
  */

@@ -122,7 +122,7 @@ Configure via a `pi-mind-config.json` in `$PI_MIND_DIR/` (auto-loaded). Defaults
 
 Three mechanisms keep memory healthy. None require a daemon — pi-mind has no background process; everything piggybacks on the natural rhythm of agent interaction.
 
-- **`wiki-lint`** — validates frontmatter, finds duplicates, flags stale entries. With `--fix` it auto-migrates legacy fields. With `--prune` it deletes age-expired memories + raw artifacts (`--prune --apply` to actually delete; default is dry-run).
+- **`knowledge-lint`** — validates frontmatter, finds duplicates, flags stale entries. With `--fix` it auto-migrates legacy fields. With `--prune` it deletes age-expired memories + raw artifacts (`--prune --apply` to actually delete; default is dry-run).
 - **`daily-audit`** — agent-executed skill: scans the maintenance log, samples LLM decisions, surfaces problems. Triggered by an "audit overdue" notice the extension injects into the agent's context at `before_agent_start`; the agent decides when to honor it.
 - **Auto-forget** — `saveMemory` increments a persistent counter (`raw/maintenance-log/last-forget.json`); every 50 writes the extension runs `forgetOldMemories()` synchronously and resets. No cron needed.
 
@@ -196,7 +196,7 @@ Key implementation notes:
 
 - **Concurrency safety**: `withGroupLock` (proper-lockfile) wraps all multi-step writes (`syncIndex`, `saveMemory`, KG mutations). Reentrant via reference counting. SQLite gets `busy_timeout = 5000` as a second wall.
 - **Schema convergence (Plan C)**: `type=subject + tier=recall` two-axis design, replacing earlier overlapping `type` field that conflated both. See `lib/schema.ts:LEGACY_TYPE_MAP` for documented lossy migrations.
-- **No double-source for schema**: `lib/schema.ts` is the single source; `core.ts` and `scripts/wiki-lint.ts` both import from it.
+- **No double-source for schema**: `lib/schema.ts` is the single source; `core.ts` and `scripts/knowledge-lint.ts` both import from it.
 - **Soft-trigger self-evolution**: cron + skills + audit log, not exception-throwing CI gates. Agent maintains its own house.
 
 ## Status

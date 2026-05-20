@@ -1,11 +1,13 @@
 ---
-name: wiki-lint
-description: Memory hygiene — schema validation, auto-fix, duplicate detection, stale flagging.
+name: knowledge-lint
+description: Memory hygiene — schema validation, auto-fix, duplicate detection, stale flagging, age-based prune.
 ---
 
-# wiki-lint
+# knowledge-lint
 
-Maintain the quality of `$PI_MIND_DIR/knowledge/`. Uses `scripts/wiki-lint.ts` for scan and repair.
+Maintain the quality of `$PI_MIND_DIR/knowledge/` and the rest of the pi-mind store. Uses `scripts/knowledge-lint.ts` for scan / auto-fix / prune.
+
+(Previously named `wiki-lint`; renamed in 0.3.0 because the project's knowledge store is no longer called "wiki" — the dir is `knowledge/` and the package is `memory`.)
 
 ## Frontmatter schema
 

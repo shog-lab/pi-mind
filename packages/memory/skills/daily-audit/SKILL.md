@@ -9,7 +9,7 @@ Run a periodic health check over `$PI_MIND_DIR/`. Designed to be triggered by OS
 
 ## What it does
 
-1. Run wiki-lint over `knowledge/` and report errors / warnings / duplicates
+1. Run knowledge-lint over `knowledge/` and report errors / warnings / duplicates
 2. Sample recent worth-remembering-llm decisions from the maintenance log (precision spot-check)
 3. Archive compaction files older than 14 days
 4. Report results as a single concise summary
@@ -33,7 +33,7 @@ npx pi-mind-lint --dry-run --fix   # preview
 npx pi-mind-lint --fix              # apply (after user confirms if invoked interactively)
 ```
 
-Detailed flow: `../wiki-lint/SKILL.md`.
+Detailed flow: `../knowledge-lint/SKILL.md`.
 
 ### 2. Worth-remembering LLM decision sample
 

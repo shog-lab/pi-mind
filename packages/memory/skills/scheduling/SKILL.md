@@ -11,7 +11,7 @@ tools in pi-mind. Two reasons:
 1. **macOS Authorization model**: the OS prompts the user's terminal app for
    broad "manage your computer" rights when crontab is invoked. Many users
    reasonably refuse this prompt.
-2. **Self-evolution doesn't need cron**: pi-mind's daily-audit and wiki-lint
+2. **Self-evolution doesn't need cron**: pi-mind's daily-audit and knowledge-lint
    are auto-triggered when you start a pi session and they're overdue (see
    the `<self-evolution>` context block). No external scheduler required.
 
