@@ -86,23 +86,6 @@ Do NOT writeback for:
 - Tactical task progress
 - Information already in another knowledge page (link to it instead)
 
-## Explicit memory saves
-
-You have a `remember_this(content, type?, tier?, tags?)` tool for high-signal explicit saves.
-
-**Call it when:**
-- The user says "记一下" / "save this" / "remember" — always call
-- You just fetched a substantive, lasting fact via a tool (article, doc, code, data) that has value beyond this conversation
-
-**Don't call it for:**
-- Normal task work or status updates
-- Anything you can re-derive from current code / context
-- Content already discussed earlier in the conversation
-
-A worth-remembering detector runs automatically at turn end as backup, so when in doubt, **do not call** — the explicit path is for high-signal moments only.
-
-**Saved content must be self-contained**: a future agent reading only this entry (without conversation history) should understand it. Don't reference the conversation with phrases like "as I mentioned" or "the thing above". Self-test before calling: *"would this still make sense in 3 months to a different agent who didn't see this chat?"*
-
 ## Episodic logging
 
 You can write observations to `$PI_MIND_DIR/raw/observations/` when you notice something worth recording but not yet ready to commit to knowledge. Format:
