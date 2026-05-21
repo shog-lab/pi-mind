@@ -97,6 +97,20 @@ Both end by calling the `write_skill` tool, which handles the correct path, fron
 
 Do not call `write_skill` outside one of these flows — skill files shape future agent behavior, so authoring must be a deliberate, user-driven action.
 
+## Image-bearing memories
+
+A retrieved memory entry may carry an attached image. You'll see two signals in the body:
+
+```markdown
+The login bug screenshot — red error under the password field, dark mode UI.
+
+![](../raw/images/abc123def4567890.png)
+```
+
+The `![](...)` markdown link points to `$PI_MIND_DIR/raw/images/<filename>`. If you only need the text description, the body has it. If you need to actually **see** the image (e.g. the user is asking follow-up questions about visual detail), call `understand_image($PI_MIND_DIR/raw/images/<filename>)` with the resolved absolute path.
+
+Don't follow the link reflexively on every retrieval — descriptions are often sufficient, and re-running vision adds latency/cost.
+
 ## Episodic logging
 
 Use the `observe(note, tags?)` tool when you notice something worth recording but not yet ready to commit as durable knowledge — half-formed hypotheses, friction signals, surprising tool results, things to revisit later. Lower bar than `remember_this`.

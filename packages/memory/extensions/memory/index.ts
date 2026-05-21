@@ -537,11 +537,21 @@ function quarantineHalfWritten(spawnId: string, _taskType: string): void {
 
 // --- Extension ---
 
-/** Resolve pi-mind's bundled system-prompt.md regardless of symlink chain. */
+/** Resolve pi-mind's bundled system-prompt.md regardless of symlink chain.
+ *
+ * The compiled file sits at <pkg-root>/dist/extensions/memory/index.js, so we
+ * need to climb THREE levels (memory → extensions → dist → pkg-root) to reach
+ * the source-of-truth `system-prompt.md` at the package root. An earlier
+ * version of this function used only two — that resolved to dist/system-prompt.md,
+ * which never exists, so readFileSync threw and the whole "inject pi-mind's
+ * system prompt into the agent" mechanism silently no-op'd for the entire
+ * dev cycle. Every edit to system-prompt.md was effectively a doc change
+ * with no runtime effect until this fix landed.
+ */
 function loadSystemPrompt(): string | null {
   try {
     const here = realpathSync(fileURLToPath(import.meta.url));
-    const promptPath = join(dirname(here), "..", "..", "system-prompt.md");
+    const promptPath = join(dirname(here), "..", "..", "..", "system-prompt.md");
     return readFileSync(promptPath, "utf-8");
   } catch {
     return null;
