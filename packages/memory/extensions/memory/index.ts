@@ -313,6 +313,14 @@ function getCore(): MemoryCore {
 
 // --- Maintenance log ---
 
+// One-time alert on logMaintenance failure. The function intentionally swallows
+// errors so a broken log doesn't crash the agent loop, but if it goes silent
+// EVERY observability signal in pi-mind (worth-remembering decisions, forget
+// runs, spawn lifecycle, image stores, etc.) silently disappears with it.
+// One console.error per process makes the meta-failure visible without
+// spamming if every subsequent write also fails.
+let _logMaintenanceFailedOnce = false;
+
 function logMaintenance(action: string, detail: Record<string, unknown>): void {
   const logDir = join(PI_MIND_DIR, "raw", "maintenance-log");
   try {
@@ -321,7 +329,12 @@ function logMaintenance(action: string, detail: Record<string, unknown>): void {
     const logFile = join(logDir, `${date}.jsonl`);
     const entry = { timestamp: new Date().toISOString(), action, ...detail };
     appendFileSync(logFile, JSON.stringify(entry) + "\n");
-  } catch {}
+  } catch (e) {
+    if (!_logMaintenanceFailedOnce) {
+      _logMaintenanceFailedOnce = true;
+      console.error(`[pi-mind] maintenance-log write failed (subsequent failures suppressed): ${e instanceof Error ? e.message : String(e)}. All pi-mind observability is offline until this is fixed (check disk space / permissions on ${logDir}).`);
+    }
+  }
 }
 
 // --- Observation helper ---

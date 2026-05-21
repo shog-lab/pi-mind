@@ -717,11 +717,21 @@ export class MemoryCore {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: this.embedModel, input: text.slice(0, this.config.embedding.maxInputChars) }),
       });
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        console.warn(`[pi-mind] embedding HTTP ${resp.status} from ${this.ollamaUrl} (model: ${this.embedModel}). Vector search will not work for new entries until this is fixed.`);
+        return null;
+      }
       const data = await resp.json() as { embeddings?: number[][] };
-      if (!data.embeddings?.[0]) return null;
+      if (!data.embeddings?.[0]) {
+        console.warn(`[pi-mind] embedding response had no embeddings field (model: ${this.embedModel}). Vector search degraded.`);
+        return null;
+      }
       return new Float64Array(data.embeddings[0]);
-    } catch {
+    } catch (e) {
+      // Network unreachable, Ollama down, fetch aborted, JSON parse failure.
+      // Previously caught silently — every new memory entry then went un-embedded
+      // and vector search degraded to FTS5-only without anyone knowing.
+      console.warn(`[pi-mind] embedding call failed: ${e instanceof Error ? e.message : String(e)}. Vector search degraded.`);
       return null;
     }
   }
