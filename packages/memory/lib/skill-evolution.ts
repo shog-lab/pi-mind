@@ -12,7 +12,7 @@
  * conversation turn, so the user can verify the result immediately.
  */
 
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const VALID_NAME_RE = /^[a-z][a-z0-9-]{0,63}$/;
@@ -46,17 +46,16 @@ export function writeSkill(input: WriteSkillInput): WriteSkillResult {
   // Refuse to overwrite a symlink — those come from npm-installed packages
   // (memory's daily-audit, ralph's prd-compile, etc.) and the user must
   // pick a different name or remove the symlink manually.
-  if (existsSync(skillDir)) {
-    try {
-      const lstat = require("node:fs").lstatSync(skillDir);
-      if (lstat.isSymbolicLink()) {
-        return {
-          ok: false,
-          reason: "package-conflict",
-          detail: `.pi/skills/${input.name} is a symlink from an installed package; choose a different skill name`,
-        };
-      }
-    } catch { /* fall through; mkdir will handle it */ }
+  try {
+    if (lstatSync(skillDir).isSymbolicLink()) {
+      return {
+        ok: false,
+        reason: "package-conflict",
+        detail: `.pi/skills/${input.name} is a symlink from an installed package; choose a different skill name`,
+      };
+    }
+  } catch {
+    // skillDir doesn't exist yet — that's fine, mkdir below will create it
   }
 
   let backedUpTo: string | undefined;
