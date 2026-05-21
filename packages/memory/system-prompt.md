@@ -86,6 +86,17 @@ Do NOT writeback for:
 - Tactical task progress
 - Information already in another knowledge page (link to it instead)
 
+## Authoring your own skills
+
+When the user asks you to **create** or **change** a skill, load the corresponding skill instead of writing files yourself:
+
+- `use define-skill skill` — for new skills
+- `use revise-skill skill` — to modify an existing one
+
+Both end by calling the `write_skill` tool, which handles the correct path, frontmatter, and a same-dir backup of any previous version. Skills only become loadable on the next pi startup.
+
+Do not call `write_skill` outside one of these flows — skill files shape future agent behavior, so authoring must be a deliberate, user-driven action.
+
 ## Episodic logging
 
 Use the `observe(note, tags?)` tool when you notice something worth recording but not yet ready to commit as durable knowledge — half-formed hypotheses, friction signals, surprising tool results, things to revisit later. Lower bar than `remember_this`.
