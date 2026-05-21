@@ -21,7 +21,8 @@ Publish a single package from `packages/<name>/` to the npm registry under the `
 
 1. Confirm working tree clean (or only the version bump pending).
 2. `npm run typecheck --workspace=packages/<pkg>` and `npm run test --workspace=packages/<pkg>` must be green.
-3. `npm whoami` — if it errors **E401**, the token in `~/.npmrc` is dead (see "Token failure" below).
+3. **End-to-end probe.** REQUIRED, not optional. Write a `.tmp-verify-<feature>.mjs` that imports the actual built code from `packages/<pkg>/dist/...` and runs the critical functional paths — happy path AND expected-failure paths (e.g. "invalid input rejected"). Unit tests alone are insufficient: vitest injects shims (notably a working `require`) that mask ESM-only failures. Concrete incident: 2026-05-21 v0.5.0 skill-evolution shipped a symlink-guard that used `require("node:fs")` inside try/catch; unit tests passed, real Node ESM threw and silently fell through. The end-to-end probe caught it. Without the probe, the bug would have shipped.
+4. `npm whoami` — if it errors **E401**, the token in `~/.npmrc` is dead (see "Token failure" below).
 
 ## Pick the version (semver)
 
