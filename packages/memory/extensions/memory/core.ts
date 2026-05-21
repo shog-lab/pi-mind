@@ -113,7 +113,6 @@ export interface WikiConfig {
   typeWeights: Record<string, number>;
   recency: { maxBoost: number; decayDays: number };
   l1: { perSubjectCap: number };
-  spawn: { goalRepeatThreshold: number; recentCompactionsToScan: number };
   semaphore: { maxConcurrent: number };
 }
 
@@ -124,7 +123,6 @@ const DEFAULT_CONFIG: WikiConfig = {
   recency: { maxBoost: 0.15, decayDays: 60 },
   l1: { perSubjectCap: 10 },
   semaphore: { maxConcurrent: 2 },
-  spawn: { goalRepeatThreshold: 3, recentCompactionsToScan: 10 },
 };
 
 export function loadWikiConfig(groupDir: string): WikiConfig {
@@ -139,7 +137,6 @@ export function loadWikiConfig(groupDir: string): WikiConfig {
         recency: { ...DEFAULT_CONFIG.recency, ...raw.recency },
         l1: { ...DEFAULT_CONFIG.l1, ...raw.l1 },
         semaphore: { ...DEFAULT_CONFIG.semaphore, ...raw.semaphore },
-        spawn: { ...DEFAULT_CONFIG.spawn, ...raw.spawn },
       };
     }
   } catch { /* fall through to default */ }

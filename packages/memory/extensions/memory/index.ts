@@ -324,6 +324,43 @@ function logMaintenance(action: string, detail: Record<string, unknown>): void {
   } catch {}
 }
 
+// --- Observation helper ---
+
+/**
+ * Write an episodic observation to raw/observations/<ts>_<slug>.jsonl-style
+ * markdown file. Returns the absolute path written.
+ *
+ * Observations are intentionally lighter than knowledge entries:
+ *   - No type/tier classification (they're all "notes")
+ *   - No worth-remembering / wiki-lint pipeline
+ *   - Frontmatter: date + tags only
+ *   - Body: the note itself
+ *
+ * wiki-lint / daily-audit periodically scan this directory and may surface
+ * recurring observations for the agent to promote into knowledge/.
+ */
+function saveObservation(piMindDir: string, note: string, tags: string[]): string {
+  const obsDir = join(piMindDir, "raw", "observations");
+  mkdirSync(obsDir, { recursive: true });
+
+  const ts = new Date();
+  const tsSlug = ts.toISOString().replace(/[:.]/g, "-");
+  // Build a short content-based slug for filename readability + light dedup
+  // (two identical notes within the same second collide and only one wins).
+  const contentSlug = note
+    .toLowerCase()
+    .replace(/[^a-z0-9一-龥]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32) || "note";
+  const fileName = `${tsSlug}_${contentSlug}.md`;
+  const fp = join(obsDir, fileName);
+
+  const tagsLine = tags.length ? `tags: [${tags.map((t) => JSON.stringify(t)).join(", ")}]\n` : "";
+  const body = `---\ndate: ${ts.toISOString()}\n${tagsLine}---\n\n${note}\n`;
+  writeFileSync(fp, body, "utf-8");
+  return fp;
+}
+
 // --- L2 spawn helpers ---
 
 let _spawnId = 0;
@@ -335,7 +372,7 @@ let _spawnId = 0;
  * Acknowledgement via ack-file: L2 touches ${id}.done after writing result.
  * Sweep at next hook invocation checks for ack and quarantines orphans.
  */
-function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void {
+function spawnL2Task(taskType: "B", params: Record<string, unknown>): void {
   const id = `${Date.now()}-${String(_spawnId++).padStart(4, "0")}`;
   const logDir = join(PI_MIND_DIR, "raw", "maintenance-log");
   mkdirSync(logDir, { recursive: true });
@@ -345,57 +382,39 @@ function spawnL2Task(taskType: "B" | "F", params: Record<string, unknown>): void
   // Register in memory Map — sweep reads from here, not jsonl
   getCore().pendingSpawns.set(id, { id, taskType, ackPath, timestamp: Date.now() });
 
-  const systemPrompt = taskType === "B"
-    ? [
-        "You are a memory classifier sub-agent.",
-        "Classify each memory by subject: who is this memory about?",
-        "",
-        "## user — User preferences, requests, or constraints",
-        "When: The user explicitly asked for something or stated a preference/constraint",
-        'Examples: "用户希望用 pm2 管理进程" / "用户要求不提命令行"',
-        "",
-        "## project — Project code, architecture, or technical decisions",
-        "When: The content is about project structure, code, files, or how the system works",
-        'Examples: "代码迁移到了 raw/compaction/" / "项目用 Docker 管理"',
-        "",
-        "## agent-feedback — Agent's own suggestions, decisions, or reflections",
-        "When: The agent recommends something, decides an approach, or reflects on what was done",
-        'Examples: "我建议用 subject tag 分类" / "决定把 compaction 移出 knowledge"',
-        "",
-        "## reference — External knowledge, docs, or research",
-        "When: The content is about reading papers, docs, or external information",
-        'Examples: "读了一篇关于 agent memory 的论文"',
-        "",
-        "Rules:",
-        `- Write to <PI_MIND_DIR>/knowledge/<slug>-${id}.md  (id at end of filename for traceability)`,
-        "- Use frontmatter: date, type=<subject>, tier=L2",
-        "- Example: date: 2026-05-08, type: project, tier: L2",
-        "",
-        `After writing the knowledge file, write a single JSON line to:`,
-        `${ackPath}`,
-        `The JSON line should be: {"type": "<subject>", "knowledgeFile": "<absolute path written>"}`,
-        "",
-        `<PI_MIND_DIR> is ${PI_MIND_DIR}`,
-      ].join("\n")
-    : [
-        "You are a skill synthesizer sub-agent.",
-        "Read the provided goal and related compaction summaries, then generate a useful SKILL.md.",
-        "",
-        "Rules:",
-        "- Extract constraints, decisions, typical next steps from the summaries",
-        "- Generate concrete, actionable skill content",
-        `- Write to <PI_MIND_DIR>/skills/<slug>-${id}/SKILL.md  (id at end of dirname for traceability)`,
-        "",
-        `After writing the SKILL.md file, write a single JSON line to:`,
-        `${ackPath}`,
-        `The JSON line should be: {"skillName": "<slug>", "skillFile": "<absolute path written>"}`,
-        "",
-        `<PI_MIND_DIR> is ${PI_MIND_DIR}`,
-      ].join("\n");
+  const systemPrompt = [
+    "You are a memory classifier sub-agent.",
+    "Classify each memory by subject: who is this memory about?",
+    "",
+    "## user — User preferences, requests, or constraints",
+    "When: The user explicitly asked for something or stated a preference/constraint",
+    'Examples: "用户希望用 pm2 管理进程" / "用户要求不提命令行"',
+    "",
+    "## project — Project code, architecture, or technical decisions",
+    "When: The content is about project structure, code, files, or how the system works",
+    'Examples: "代码迁移到了 raw/compaction/" / "项目用 Docker 管理"',
+    "",
+    "## agent-feedback — Agent's own suggestions, decisions, or reflections",
+    "When: The agent recommends something, decides an approach, or reflects on what was done",
+    'Examples: "我建议用 subject tag 分类" / "决定把 compaction 移出 knowledge"',
+    "",
+    "## reference — External knowledge, docs, or research",
+    "When: The content is about reading papers, docs, or external information",
+    'Examples: "读了一篇关于 agent memory 的论文"',
+    "",
+    "Rules:",
+    `- Write to <PI_MIND_DIR>/knowledge/<slug>-${id}.md  (id at end of filename for traceability)`,
+    "- Use frontmatter: date, type=<subject>, tier=L2",
+    "- Example: date: 2026-05-08, type: project, tier: L2",
+    "",
+    `After writing the knowledge file, write a single JSON line to:`,
+    `${ackPath}`,
+    `The JSON line should be: {"type": "<subject>", "knowledgeFile": "<absolute path written>"}`,
+    "",
+    `<PI_MIND_DIR> is ${PI_MIND_DIR}`,
+  ].join("\n");
 
-  const taskPrompt = taskType === "B"
-    ? `Classify this summary:\n\n${params.summary}\n\nWrite the knowledge file, then echo the JSON line to ${ackPath}.`
-    : `Goal: ${params.goal}\n\nRelated compaction summaries:\n${params.summaries}\n\nWrite SKILL.md, then echo the JSON line to ${ackPath}.`;
+  const taskPrompt = `Classify this summary:\n\n${params.summary}\n\nWrite the knowledge file, then echo the JSON line to ${ackPath}.`;
 
   // Log before spawn (sweep reads from pending Map, not log timing)
   logMaintenance(`${taskType}-spawn`, { id, taskType, ackPath, pid: 0 });
@@ -447,7 +466,7 @@ function recoverPendingSpawns(core: MemoryCore): void {
         if (!line.trim()) continue;
         try {
           const entry = JSON.parse(line);
-          if (entry.action === "B-spawn" || entry.action === "F-spawn") {
+          if (entry.action === "B-spawn") {
             if (!core.pendingSpawns.has(entry.id)) {
               core.pendingSpawns.set(entry.id, {
                 id: entry.id,
@@ -456,12 +475,12 @@ function recoverPendingSpawns(core: MemoryCore): void {
                 timestamp: new Date(entry.timestamp).getTime(),
               });
             }
-          } else if (
-            entry.action === "B-confirmed" || entry.action === "F-confirmed" ||
-            entry.action === "B-lost" || entry.action === "F-lost"
-          ) {
+          } else if (entry.action === "B-confirmed" || entry.action === "B-lost") {
             core.pendingSpawns.delete(entry.id);
           }
+          // Legacy F-* entries (skill synthesis path, removed) are ignored —
+          // any pendingSpawns recovered from them won't have ack files anyway
+          // and will be swept as orphans on the next sweep cycle.
         } catch {}
       }
     } catch {}
@@ -504,31 +523,15 @@ function sweepSpawns(): void {
   }
 }
 
-/** Quarantine half-written files from a failed L2 spawn */
-function quarantineHalfWritten(spawnId: string, taskType: string): void {
-  if (taskType === "B") {
-    const knowledgeDir = join(PI_MIND_DIR, "knowledge");
-    const quarantineDir = join(PI_MIND_DIR, "knowledge", "quarantine");
-    if (existsSync(knowledgeDir)) {
-      mkdirSync(quarantineDir, { recursive: true });
-      const files = readdirSync(knowledgeDir).filter((f) => f.endsWith(`-${spawnId}.md`));
-      for (const file of files) {
-        try { renameSync(join(knowledgeDir, file), join(quarantineDir, file)); } catch {}
-      }
-    }
-  } else {
-    const skillsDir = join(PI_MIND_DIR, "skills");
-    if (!existsSync(skillsDir)) return;
-    for (const subDir of readdirSync(skillsDir)) {
-      if (!subDir.endsWith(`-${spawnId}`)) continue;
-      const srcDir = join(skillsDir, subDir);
-      const quarantineSubDir = join(skillsDir, "quarantine", subDir);
-      mkdirSync(quarantineSubDir, { recursive: true });
-      for (const file of readdirSync(srcDir)) {
-        try { renameSync(join(srcDir, file), join(quarantineSubDir, file)); } catch {}
-      }
-      try { rmdirSync(srcDir); } catch {}
-    }
+/** Quarantine half-written files from a failed L2 (B) spawn. */
+function quarantineHalfWritten(spawnId: string, _taskType: string): void {
+  const knowledgeDir = join(PI_MIND_DIR, "knowledge");
+  const quarantineDir = join(PI_MIND_DIR, "knowledge", "quarantine");
+  if (!existsSync(knowledgeDir)) return;
+  mkdirSync(quarantineDir, { recursive: true });
+  const files = readdirSync(knowledgeDir).filter((f) => f.endsWith(`-${spawnId}.md`));
+  for (const file of files) {
+    try { renameSync(join(knowledgeDir, file), join(quarantineDir, file)); } catch {}
   }
 }
 
@@ -696,7 +699,51 @@ export default function memExtension(pi: ExtensionAPI) {
     },
   });
 
-  // On compaction: save summary + do B+D+F maintenance
+  pi.registerTool({
+    name: "observe",
+    label: "Observe",
+    description: [
+      "Log a quick observation to long-term episodic memory.",
+      "",
+      "Use this for things you noticed that aren't ready to commit as durable",
+      "knowledge — half-formed hypotheses, friction signals, things worth",
+      "checking later. Lower bar than remember_this: observations are messy",
+      "field notes, not curated facts.",
+      "",
+      "Call when:",
+      "  - You spotted something surprising mid-task (\"the test passed but",
+      "    only because the fixture had a typo\")",
+      "  - You noticed a pattern across multiple turns (\"this is the third",
+      "    time the user has rejected suggestions starting with 'maybe'\")",
+      "  - A tool result hinted at something worth follow-up later",
+      "",
+      "Don't call for status updates, task progress, or anything already",
+      "covered by remember_this (concrete facts) or worth-remembering's",
+      "auto-detection. Observations are intentionally lossy — wiki-lint /",
+      "daily-audit may later promote recurring observations to knowledge.",
+    ].join("\n"),
+    parameters: {
+      type: "object",
+      properties: {
+        note: { type: "string", description: "Self-contained observation. One paragraph, no conversation references." },
+        tags: { type: "array", items: { type: "string" }, description: "1-3 topic keywords." },
+      },
+      required: ["note"],
+    },
+    async execute(_id: string, params: { note: string; tags?: string[] }) {
+      const tags = Array.isArray(params.tags) ? params.tags.filter((t) => typeof t === "string").slice(0, 5) : [];
+      try {
+        const fp = saveObservation(PI_MIND_DIR, params.note, tags);
+        logMaintenance("observe", { file: fp });
+        return { content: [{ type: "text" as const, text: `Observed → ${fp}` }], details: {} };
+      } catch (e) {
+        logMaintenance("observe-error", { error: String(e) });
+        return { content: [{ type: "text" as const, text: `observe failed: ${String(e)}` }], details: {} };
+      }
+    },
+  });
+
+  // On compaction: save summary + do B+D maintenance
   pi.on("session_compact", async (event) => {
     const summary = event.compactionEntry.summary;
 
@@ -716,16 +763,11 @@ export default function memExtension(pi: ExtensionAPI) {
       getSemaphore().release();
     });
 
-    // 4. F: detect repeated goals, then fire-and-forget spawn
-    const skillResult = detectSkillPattern();
-    if (skillResult) {
-      getSemaphore().acquire().then(() => {
-        spawnL2Task("F", { goal: skillResult.goal, summaries: skillResult.summaries });
-        getSemaphore().release();
-      });
-    }
-
-    // 5. Sweep pending spawns from previous hook invocations
+    // 4. Sweep pending spawns from previous hook invocations.
+    // (The old F-task / skill-synthesis spawn was removed: detectSkillPattern
+    // searched compaction files for a "## Goal" header that pi-coding-agent
+    // never writes, so the path always returned null and never fired in
+    // production. Skill synthesis will be redesigned from scratch.)
     sweepSpawns();
   });
 
@@ -823,51 +865,8 @@ export default function memExtension(pi: ExtensionAPI) {
   });
 }
 
-// --- Skill pattern detection (for F task) ---
-
-function detectSkillPattern(): { goal: string; summaries: string } | null {
-  try {
-    const compactionDir = join(PI_MIND_DIR, "raw", "compaction");
-    if (!existsSync(compactionDir)) return null;
-    const files = readdirSync(compactionDir).filter((f) => f.endsWith(".md"));
-    if (files.length < getCore().config.spawn.recentCompactionsToScan) return null;
-
-    const recent = files.slice(-getCore().config.spawn.recentCompactionsToScan);
-    const goalMap = new Map<string, { goal: string; count: number; files: string[] }>();
-
-    for (const name of recent) {
-      const content = readFileSync(join(compactionDir, name), "utf-8");
-      const goal = extractGoal(content);
-      if (!goal) continue;
-      if (goalMap.has(goal)) {
-        goalMap.get(goal)!.count++;
-        goalMap.get(goal)!.files.push(name);
-      } else {
-        goalMap.set(goal, { goal, count: 1, files: [name] });
-      }
-    }
-
-    const goals = Array.from(goalMap.values());
-    if (goals.length < getCore().config.spawn.goalRepeatThreshold) return null;
-
-    goals.sort((a, b) => b.count - a.count);
-    const repeated = goals.find((g) => g.count >= getCore().config.spawn.goalRepeatThreshold);
-    if (!repeated) return null;
-
-    const relatedSummaries: string[] = [];
-    for (const name of repeated.files) {
-      const content = readFileSync(join(compactionDir, name), "utf-8");
-      const body = content.replace(/^---[\s\S]*?---\n/, "").slice(0, 2000);
-      relatedSummaries.push(`=== ${name} ===\n${body}`);
-    }
-
-    return { goal: repeated.goal, summaries: relatedSummaries.join("\n\n") };
-  } catch {
-    return null;
-  }
-}
-
-function extractGoal(content: string): string | null {
-  const m = content.match(/^## Goal\s*\n(.+)/m);
-  return m ? m[1].trim().slice(0, 100) : null;
-}
+// Skill pattern detection + extractGoal removed: the implementation searched
+// raw/compaction/ files for a "## Goal" header that pi-coding-agent never
+// writes (pi just appends raw compactionEntry.summary text). The F-spawn it
+// guarded therefore never fired in production. Skill synthesis design is
+// being reopened from scratch.

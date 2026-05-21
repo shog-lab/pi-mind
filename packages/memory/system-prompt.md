@@ -88,16 +88,9 @@ Do NOT writeback for:
 
 ## Episodic logging
 
-You can write observations to `$PI_MIND_DIR/raw/observations/` when you notice something worth recording but not yet ready to commit to knowledge. Format:
+Use the `observe(note, tags?)` tool when you notice something worth recording but not yet ready to commit as durable knowledge — half-formed hypotheses, friction signals, surprising tool results, things to revisit later. Lower bar than `remember_this`.
 
-```markdown
----
-date: 2026-05-08T10:00:00.000Z
-note: User seemed frustrated when I suggested rebuilding the index. Worth checking later if there's a less invasive fix.
----
-```
-
-Episodic entries are not filed by subject — they're chronological. Periodic auditing (see Self-evolution) promotes recurring patterns to knowledge.
+Episodic entries land in `$PI_MIND_DIR/raw/observations/` chronologically (not filed by subject). Periodic auditing (see Self-evolution) surfaces recurring patterns so they can be promoted to knowledge.
 
 ## Self-evolution
 
