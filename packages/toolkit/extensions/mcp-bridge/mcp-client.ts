@@ -67,9 +67,16 @@ export class McpClient {
 
   constructor(serverName: string, config: McpServerConfig) {
     this.serverName = serverName;
+    // detached: true puts the server in its own process group so close() can
+    // take down the entire group via process.kill(-pid). This matters because
+    // MCP servers are commonly launched via npx (e.g. `npx @modelcontextprotocol/
+    // server-filesystem ...`), where npx is just a Node wrapper that spawns the
+    // real server as a grandchild. Killing the npx pid alone leaves the real
+    // server orphaned and reparented to init — leaking across pi sessions.
     this.proc = spawn(config.command, config.args ?? [], {
       env: { ...process.env, ...config.env },
       stdio: ["pipe", "pipe", "pipe"],
+      detached: true,
     });
 
     this.proc.stdout?.on("data", (chunk: Buffer) => this.onStdout(chunk));
@@ -118,8 +125,17 @@ export class McpClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    if (!this.proc.killed) {
-      try { this.proc.kill("SIGTERM"); } catch { /* ignore */ }
+    // Kill the whole process group (negative pid) — see constructor for why.
+    // SIGKILL backup at 500ms catches well-behaved servers that ignored SIGTERM
+    // or are stuck in a syscall.
+    if (this.proc.pid !== undefined && !this.proc.killed) {
+      const pid = this.proc.pid;
+      try { process.kill(-pid, "SIGTERM"); } catch { /* group gone */ }
+      const killTimer = setTimeout(() => {
+        try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ }
+      }, 500);
+      killTimer.unref();
+      this.proc.once("exit", () => clearTimeout(killTimer));
     }
     this.failAll(new Error(`MCP client "${this.serverName}" closed`));
   }

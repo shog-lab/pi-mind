@@ -38,17 +38,37 @@ function execMmx(args: string[], timeoutMs = 30000): Promise<string> {
       if (v !== undefined) env[k] = v;
     }
     if (key) env.MINIMAX_API_KEY = key;
-    const proc = spawn(MMX, args, { timeout: timeoutMs, env });
+    // detached: true + manual timeout (instead of spawn's built-in `timeout`
+    // option) so we can kill the whole process group on timeout. Node's
+    // built-in timeout sends SIGTERM to the child pid only; if mmx forks
+    // grandchildren they leak and keep pipe FDs open, hanging 'close'.
+    const proc = spawn(MMX, args, { env, detached: true });
     let stdout = "";
     let stderr = "";
+
+    const killGroup = (signal: "SIGTERM" | "SIGKILL"): void => {
+      if (proc.pid === undefined) return;
+      try { process.kill(-proc.pid, signal); } catch { /* gone */ }
+    };
+    let killTimer: NodeJS.Timeout | null = null;
+    const timer = setTimeout(() => {
+      killGroup("SIGTERM");
+      killTimer = setTimeout(() => killGroup("SIGKILL"), 500);
+    }, timeoutMs);
 
     proc.stdout?.on("data", (d) => { stdout += d.toString(); });
     proc.stderr?.on("data", (d) => { stderr += d.toString(); });
     proc.on("close", (code) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       if (code === 0) resolve(stdout);
       else reject(new Error(stderr || stdout || `mmx exited with code ${code}`));
     });
-    proc.on("error", reject);
+    proc.on("error", (e) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      reject(e);
+    });
   });
 }
 
