@@ -14,6 +14,12 @@ export const GoalState = Type.Union([
   Type.Literal("completed"),
   Type.Literal("failed"),
   Type.Literal("budget_limited"),
+  // "iteration_limited" is distinct from "failed": the loop ran out of
+  // maxIterations with stories still incomplete, but nothing crashed.
+  // The user can /goal --resume after bumping maxIterations to keep going.
+  // Previously this terminal was conflated with "failed" which misled users
+  // into thinking the goal was unfixable.
+  Type.Literal("iteration_limited"),
 ]);
 
 export type GoalState = Static<typeof GoalState>;
@@ -110,3 +116,20 @@ export const PRDDBSchema = Type.Object({
 });
 
 export type PRDDBSchema = Static<typeof PRDDBSchema>;
+
+// --- Verification sub-agent contract ---
+
+/**
+ * Shape the verification sub-agent MUST return (as JSON in its final message).
+ * The loop validates parsed JSON against this — anything that fails the schema
+ * is treated as a verification failure with a parse-error reason, so the agent
+ * can't silently squeeze a malformed object past the checker (e.g. by sending
+ * `{"passes": "yes"}` and having `!!parsed.passes` evaluate to true).
+ */
+export const VerificationResultSchema = Type.Object({
+  passes: Type.Boolean(),
+  evidence: Type.Optional(Type.Record(Type.String(), Type.String())),
+  incompleteReasons: Type.Optional(Type.Array(Type.String())),
+});
+
+export type VerificationResult = Static<typeof VerificationResultSchema>;

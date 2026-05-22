@@ -11,6 +11,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { Type, type Static } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { GoalStore, resolveGoalsDir } from "./store.js";
 import { GoalSchema, GoalState, PRDDBSchema, DEFAULT_CONFIG, type GoalsConfig } from "./schema.js";
@@ -62,21 +63,35 @@ function resolvePRD(prdPath: string): { userStories: Static<typeof PRDDBSchema>[
   if (!existsSync(prdPath)) {
     return null;
   }
+  let raw: string;
   try {
-    const raw = readFileSync(prdPath, "utf-8");
-    const prd = JSON.parse(raw);
-    return {
-      userStories: prd.userStories,
-      branchName: prd.branchName,
-      project: prd.project,
-    };
+    raw = readFileSync(prdPath, "utf-8");
   } catch (e) {
-    // File exists (passed the existsSync above) but reading or JSON-parsing
-    // failed — almost always a malformed prd.json. Don't lie to the caller:
-    // log so the user knows their PRD was silently dropped.
+    console.warn(`[pi-goals] failed to read PRD at ${prdPath}: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+  let prd: unknown;
+  try {
+    prd = JSON.parse(raw);
+  } catch (e) {
     console.warn(`[pi-goals] failed to parse PRD at ${prdPath}: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
+  // Schema-validate so a JSON file with the right syntax but wrong shape
+  // (missing userStories, story missing priority, story criteria not an
+  // array, …) does NOT silently produce an empty goal that looks "done"
+  // immediately. Report the specific schema violation(s).
+  if (!Value.Check(PRDDBSchema, prd)) {
+    const errors = [...Value.Errors(PRDDBSchema, prd)].slice(0, 5)
+      .map((err) => `${err.path || "(root)"}: ${err.message}`).join("; ");
+    console.warn(`[pi-goals] PRD at ${prdPath} did not match expected schema: ${errors}`);
+    return null;
+  }
+  return {
+    userStories: prd.userStories,
+    branchName: prd.branchName,
+    project: prd.project,
+  };
 }
 
 // --- Extension ---

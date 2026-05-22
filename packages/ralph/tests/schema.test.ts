@@ -60,17 +60,19 @@ describe("schema exports", () => {
 });
 
 describe("GoalState union values", () => {
-  it("GoalState has 6 variants", async () => {
+  it("GoalState has 7 variants", async () => {
     const { GoalState } = await import("../extensions/goals/schema.js");
     // TypeBox Union stores variants in anyOf array
     const variants = (GoalState as any).anyOf;
-    expect(variants).toHaveLength(6);
+    expect(variants).toHaveLength(7);
   });
 
   it("GoalState variants match expected states", async () => {
     const { GoalState } = await import("../extensions/goals/schema.js");
     const variants = (GoalState as any).anyOf;
-    const expected = ["created", "active", "paused", "completed", "failed", "budget_limited"];
+    // "iteration_limited" is distinct from "failed": loop ran out of
+    // rounds with stories still incomplete, but nothing crashed.
+    const expected = ["created", "active", "paused", "completed", "failed", "budget_limited", "iteration_limited"];
     const actual = variants.map((v: any) => v.const);
     expect(actual.sort()).toEqual(expected.sort());
   });

@@ -15,7 +15,8 @@ import { dirname, join } from "node:path";
 import { execSync, type ExecSyncOptionsWithStringEncoding } from "node:child_process";
 import { spawnPi, type PiTokens } from "@shog-lab/pi-utils";
 import { GoalStore, resolveGoalsDir } from "./store.js";
-import { Goal, GoalState, UserStory, type GoalsConfig } from "./schema.js";
+import { Value } from "@sinclair/typebox/value";
+import { Goal, GoalState, UserStory, VerificationResultSchema, type GoalsConfig } from "./schema.js";
 import { withGroupLock } from "./mutex.js";
 
 // --- Prompt templates ---
@@ -359,25 +360,53 @@ async function verifyStory(
     tools: verifyTools,
   });
 
-  try {
-    // Extract JSON from output (might be wrapped in markdown)
-    const jsonMatch = result.stdout.match(/\{[\s\S]*"passes"[\s\S]*\}/);
-    if (jsonMatch) {
+  // Extract JSON from output (might be wrapped in markdown) and validate it
+  // against VerificationResultSchema. Schema validation catches a class of
+  // sub-agent regressions that the old !!parsed.passes coercion would miss:
+  //   - `{"passes": "yes"}`     → was truthy → falsely "passed"
+  //   - `{"passes": null}`      → was falsy → false-failed
+  //   - `{"pass": true}`        → typo → undefined → false-failed silently
+  //   - missing field           → defaulted → silently lost info
+  // Now: anything not matching the schema falls through to the parseError
+  // branch with a useful message instead of being misinterpreted.
+  const jsonMatch = result.stdout.match(/\{[\s\S]*"passes"[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
       const parsed = JSON.parse(jsonMatch[0]);
+      if (Value.Check(VerificationResultSchema, parsed)) {
+        return {
+          passes: parsed.passes,
+          evidence: parsed.evidence ?? {},
+          incompleteReasons: parsed.incompleteReasons ?? [],
+          tokens: result.tokens,
+        };
+      }
+      // Parsed JSON but shape wrong — surface what's expected vs what we got.
+      const errors = [...Value.Errors(VerificationResultSchema, parsed)].slice(0, 3)
+        .map((e) => `${e.path || "(root)"}: ${e.message}`).join("; ");
       return {
-        passes: !!parsed.passes,
-        evidence: parsed.evidence || {},
-        incompleteReasons: parsed.incompleteReasons || [],
+        passes: false,
+        evidence: { schemaError: errors, raw: jsonMatch[0].slice(0, 500) },
+        incompleteReasons: [`Verification JSON did not match schema: ${errors}`],
+        tokens: result.tokens,
+      };
+    } catch (e) {
+      // JSON.parse failed — agent emitted something that started with { but
+      // wasn't valid JSON. Capture the snippet so the user can diagnose.
+      return {
+        passes: false,
+        evidence: { parseError: e instanceof Error ? e.message : String(e), raw: jsonMatch[0].slice(0, 500) },
+        incompleteReasons: ["Could not parse verification output as JSON"],
         tokens: result.tokens,
       };
     }
-  } catch {}
+  }
 
-  // Fallback: assume verification failed if we can't parse
+  // No JSON-shaped substring found at all — sub-agent didn't even attempt the contract.
   return {
     passes: false,
-    evidence: { parseError: result.stdout.slice(0, 500) },
-    incompleteReasons: ["Could not parse verification output"],
+    evidence: { parseError: "no JSON found in verification output", raw: result.stdout.slice(0, 500) },
+    incompleteReasons: ["Verification sub-agent did not emit a JSON result block"],
     tokens: result.tokens,
   };
 }
@@ -617,13 +646,15 @@ ${!passes && verificationResult ? `Evidence: ${JSON.stringify(verificationResult
     }
   }
 
-  // Max iterations reached — terminal state must be persisted to DB, not only returned.
-  store.transitionTo(goal.id, "failed");
+  // Max iterations reached. NOT a "failed" state — nothing crashed, the loop
+  // simply ran out of rounds. Distinct terminal so users see "I should bump
+  // maxIterations and /goal --resume" instead of "implementation is broken".
+  store.transitionTo(goal.id, "iteration_limited");
   return {
     goalId: goal.id,
     completed: false,
-    finalState: "failed",
+    finalState: "iteration_limited",
     iterationsRun: goal.currentIteration,
-    reason: "Max iterations reached",
+    reason: `Max iterations (${goal.maxIterations}) reached with stories still incomplete. Resume after bumping maxIterations to continue.`,
   };
 }
