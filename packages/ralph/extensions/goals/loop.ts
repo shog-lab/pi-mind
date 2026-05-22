@@ -205,34 +205,108 @@ async function spawnGoalsSubagent(
 // --- Execution & Verification ---
 
 /**
- * Ensure the goal's working tree is on goal.branchName.
- * Creates the branch if it doesn't exist. Skips if branchName is empty or
- * the placeholder "ralph/default" (treated as "stay on whatever branch we're on").
+ * @internal — exported only for e2e probe testing. Not part of the public
+ * extension surface; do not import from outside this package.
  *
- * Done in the parent process — relying on the sub-agent to run git checkout
- * via prompt was fragile (sub-agent could ignore, fail, or run different commands).
+ * Materialize a per-goal git worktree at `<repo-root>/.ralph-worktrees/<goal-id>`
+ * on the goal's branch, and return the worktree path. Returns null if cwd is
+ * not in a git repo (caller falls back to operating in cwd directly).
+ *
+ * Why a worktree instead of `git checkout` in-place: the previous design
+ * switched branches IN the user's main checkout, which:
+ *   - Stomped the user's current working state (uncommitted changes followed
+ *     the checkout, or git refused and ralph proceeded on the wrong branch)
+ *   - Made multi-goal concurrency impossible (one cwd, one branch)
+ *   - Left the user on `ralph/<slug>` after ralph finished, requiring a
+ *     manual `git checkout` to get back
+ *
+ * Worktree-based isolation gives ralph a clean physical sandbox per goal.
+ * The shared `.pi-mind/` and `.pi-goals/` dirs still resolve to the main
+ * repo root via `git rev-parse --git-common-dir` (see pi-utils paths.ts),
+ * so memory + goal state survive worktree teardown.
+ *
+ * Idempotent: if the worktree already exists on disk and is registered with
+ * git, reuses it (paused goal resume path). Falls through with a warning if
+ * the path exists but isn't a registered worktree — user must clean up
+ * manually with `git worktree prune` or `rm -rf .ralph-worktrees/<id>`.
  */
-function ensureBranch(cwd: string, branchName: string | undefined): void {
-  if (!branchName || branchName === "ralph/default") return;
+export function ensureWorktree(
+  cwd: string,
+  goalId: string,
+  branchName: string | undefined
+): string | null {
+  if (!branchName || branchName === "ralph/default") return null;
   const opts: ExecSyncOptionsWithStringEncoding = {
     cwd,
     encoding: "utf-8",
     timeout: 5000,
     stdio: ["ignore", "pipe", "pipe"],
   };
-  let exists = false;
+
+  // Find repo root from cwd (cwd might be a subdir of the project).
+  let repoRoot: string;
+  try {
+    repoRoot = execSync("git rev-parse --show-toplevel", opts).trim();
+  } catch {
+    return null; // not in a git repo — skip worktree, caller falls back
+  }
+
+  const worktreePath = join(repoRoot, ".ralph-worktrees", goalId);
+
+  // Already registered worktree? `git worktree list --porcelain` prints
+  // `worktree <abspath>` lines. If our path is among them, reuse.
+  let alreadyRegistered = false;
+  try {
+    const listing = execSync("git worktree list --porcelain", opts);
+    alreadyRegistered = listing.split("\n").some((line) =>
+      line.startsWith("worktree ") && line.slice("worktree ".length).trim() === worktreePath
+    );
+  } catch { /* git too old, or repo broken — fall through to add */ }
+
+  if (alreadyRegistered) {
+    if (!existsSync(worktreePath)) {
+      // Registered but path missing — registration is stale. Prune + recreate.
+      try { execSync("git worktree prune", opts); } catch { /* best-effort */ }
+    } else {
+      return worktreePath;
+    }
+  }
+
+  // Ensure the parent dir exists. `.ralph-worktrees/` should be added to
+  // .gitignore by the user — we don't auto-modify their .gitignore. Log a
+  // one-time hint when we first create the dir.
+  const parent = join(repoRoot, ".ralph-worktrees");
+  if (!existsSync(parent)) {
+    mkdirSync(parent, { recursive: true });
+    console.warn(
+      `[goals] created ${parent} — add ".ralph-worktrees/" to your .gitignore to avoid tracking ralph worktrees`
+    );
+  }
+
+  // Does the branch already exist?
+  let branchExists = false;
   try {
     execSync(`git rev-parse --verify ${JSON.stringify(branchName)}`, opts);
-    exists = true;
+    branchExists = true;
   } catch { /* branch missing */ }
+
   try {
-    if (exists) {
-      execSync(`git checkout ${JSON.stringify(branchName)}`, opts);
+    if (branchExists) {
+      // Branch must not already be checked out elsewhere (including the main
+      // checkout). git worktree add will fail with a clear message if so.
+      execSync(`git worktree add ${JSON.stringify(worktreePath)} ${JSON.stringify(branchName)}`, opts);
     } else {
-      execSync(`git checkout -b ${JSON.stringify(branchName)}`, opts);
+      execSync(`git worktree add -b ${JSON.stringify(branchName)} ${JSON.stringify(worktreePath)}`, opts);
     }
+    return worktreePath;
   } catch (err) {
-    console.warn(`[goals] failed to checkout branch "${branchName}":`, err instanceof Error ? err.message : err);
+    // Surface the actual git error message — common causes: branch checked
+    // out elsewhere, path collides with existing dir, dirty index, etc.
+    console.warn(
+      `[goals] failed to create worktree for "${branchName}" at ${worktreePath}:`,
+      err instanceof Error ? err.message : err
+    );
+    return null;
   }
 }
 
@@ -253,20 +327,24 @@ async function executeStory(
     "Branch: " + goal.branchName,
   ].join("\n");
 
+  // workCwd is the worktree (isolation sandbox) when available, else falls
+  // back to the user's project root.
+  const workCwd = goal.worktreePath ?? goal.cwd;
+
   const prompt = EXECUTION_PROMPT_TEMPLATE
     .replace("{progressLog}", progressLog)
     .replace("{storyJson}", JSON.stringify(story, null, 2))
-    .replace("{cwd}", goal.cwd)
+    .replace("{cwd}", workCwd)
     .replace("{prdFile}", goal.prdFile || "no prd file");
 
   // Pass execution tools via --tools flag (from config) — issue #2 fix
   const execTools = config.executionTools ?? DEFAULT_EXECUTION_TOOLS;
-  const result = await spawnGoalsSubagent(goal.cwd, systemPrompt, prompt, {
+  const result = await spawnGoalsSubagent(workCwd, systemPrompt, prompt, {
     tools: execTools,
   });
 
   // Parse output for changed files and commit hash
-  const changedFiles = parseChangedFilesFromGit(result.stdout, goal.cwd);
+  const changedFiles = parseChangedFilesFromGit(result.stdout, workCwd);
   const commitHash = parseCommitHash(result.stdout);
 
   return { changedFiles, output: result.stdout, commitHash, tokens: result.tokens };
@@ -324,12 +402,16 @@ async function verifyStory(
   // Verification tools are restricted to read-only + browser inspection (issue #1 fix)
   const verifyTools = config.verificationTools ?? DEFAULT_VERIFICATION_TOOLS;
 
+  // Same workCwd as executeStory — verification runs in the worktree so it
+  // sees the exact files the execution agent touched.
+  const workCwd = goal.worktreePath ?? goal.cwd;
+
   // For verification, always re-discover changed files via git diff (issue #6 fix)
   // Don't trust the execution agent's reported file list
   let verifiedFiles: string[];
   try {
     verifiedFiles = (execSync("git diff --name-only", {
-      cwd: goal.cwd,
+      cwd: workCwd,
       encoding: "utf-8" as const,
       timeout: 5000,
     } as ExecSyncOptionsWithStringEncoding) as string)
@@ -354,9 +436,9 @@ async function verifyStory(
     .replace("{storyJson}", JSON.stringify(story, null, 2))
     .replace("{changedFiles}", verifiedFiles.join(", ") || "none")
     .replace("{acceptanceCriteriaFormatted}", story.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n"))
-    .replace("{cwd}", goal.cwd);
+    .replace("{cwd}", workCwd);
 
-  const result = await spawnGoalsSubagent(goal.cwd, systemPrompt, prompt, {
+  const result = await spawnGoalsSubagent(workCwd, systemPrompt, prompt, {
     tools: verifyTools,
   });
 
@@ -459,9 +541,17 @@ async function runLoopInternal(
   const episodicDir = join(resolveGoalsDir(), "episodic", "ralph");
   mkdirSync(episodicDir, { recursive: true });
 
-  // Ensure the working tree is on goal.branchName before any iteration runs.
-  // (issue #3 — previously delegated to sub-agent via prompt, which was unreliable.)
-  ensureBranch(goal.cwd, goal.branchName);
+  // Materialize a per-goal worktree on goal.branchName. All sub-agent spawns
+  // + git inspections run in this worktree so the user's main checkout is
+  // never touched. Falls back to goal.cwd if not in a git repo or worktree
+  // creation fails (warning logged in either case).
+  if (!goal.worktreePath) {
+    const worktree = ensureWorktree(goal.cwd, goal.id, goal.branchName);
+    if (worktree) {
+      goal.worktreePath = worktree;
+      store.updateGoal(goal.id, { worktreePath: worktree });
+    }
+  }
 
   while (goal.currentIteration < goal.maxIterations) {
     goal.currentIteration++;

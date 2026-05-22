@@ -43,7 +43,12 @@ export const GoalSchema = Type.Object({
   state: GoalState,
   objective: Type.String(),                    // user-provided goal text
   branchName: Type.String(),
-  cwd: Type.String(),                         // working directory
+  cwd: Type.String(),                         // user-facing project root (where /goal was invoked)
+  // Per-goal git worktree path — `<repo-root>/.ralph-worktrees/<goal-id>`.
+  // All sub-agent spawns + git diffs run with this as cwd, so the user's main
+  // checkout is never touched. Undefined for legacy goals created before the
+  // worktree-isolation feature; the loop materializes it on next resume.
+  worktreePath: Type.Optional(Type.String()),
   prdFile: Type.Optional(Type.String()),      // path to prd.json (if from PRD)
   tokensUsed: Type.Number({ default: 0 }),
   tokenBudget: Type.Optional(Type.Number()),

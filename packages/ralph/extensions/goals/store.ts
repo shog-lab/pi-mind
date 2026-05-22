@@ -105,10 +105,13 @@ export class GoalStore {
       CREATE INDEX IF NOT EXISTS idx_logs_goalId ON iterationLogs(goalId);
     `);
 
-    // Lightweight migration for DBs created before costUsd was added.
+    // Lightweight migrations for DBs created before columns were added.
     // SQLite ALTER TABLE ADD COLUMN is idempotent only via try/catch on "duplicate column".
     try {
       this.db.exec(`ALTER TABLE goals ADD COLUMN costUsd REAL NOT NULL DEFAULT 0`);
+    } catch { /* column already exists — migrated */ }
+    try {
+      this.db.exec(`ALTER TABLE goals ADD COLUMN worktreePath TEXT`);
     } catch { /* column already exists — migrated */ }
   }
 
@@ -134,12 +137,13 @@ export class GoalStore {
 
   createGoal(goal: Goal): void {
     const stmt = this.db.prepare(`
-      INSERT INTO goals (id, state, objective, branchName, cwd, prdFile,
+      INSERT INTO goals (id, state, objective, branchName, cwd, worktreePath, prdFile,
         tokensUsed, tokenBudget, costUsd, maxIterations, currentIteration, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
-      goal.id, goal.state, goal.objective, goal.branchName, goal.cwd, goal.prdFile ?? null,
+      goal.id, goal.state, goal.objective, goal.branchName, goal.cwd,
+      goal.worktreePath ?? null, goal.prdFile ?? null,
       goal.tokensUsed, goal.tokenBudget ?? null, goal.costUsd ?? 0,
       goal.maxIterations, goal.currentIteration,
       goal.createdAt, goal.updatedAt
@@ -170,6 +174,7 @@ export class GoalStore {
       objective: row.objective as string,
       branchName: row.branchName as string,
       cwd: row.cwd as string,
+      worktreePath: (row.worktreePath as string | null) ?? undefined,
       prdFile: row.prdFile as string | undefined,
       tokensUsed: row.tokensUsed as number,
       tokenBudget: row.tokenBudget as number | undefined,
@@ -192,6 +197,7 @@ export class GoalStore {
     if (updates.costUsd !== undefined) { fields.push("costUsd = ?"); values.push(updates.costUsd); }
     if (updates.currentIteration !== undefined) { fields.push("currentIteration = ?"); values.push(updates.currentIteration); }
     if (updates.completedAt !== undefined) { fields.push("completedAt = ?"); values.push(updates.completedAt); }
+    if (updates.worktreePath !== undefined) { fields.push("worktreePath = ?"); values.push(updates.worktreePath); }
 
     if (fields.length === 0) return;
 

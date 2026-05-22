@@ -78,7 +78,40 @@ continue.
 │   └── ralph/            # Iteration logs
 │       └── iteration-001.jsonl
 └── .locks/               # Concurrent write protection
+
+.ralph-worktrees/         # Per-goal git worktrees (one dir per goal)
+├── goal-<id1>/           # Goal #1's isolated checkout on its branch
+└── goal-<id2>/           # Goal #2's checkout — sibling, independent
 ```
+
+## Worktree isolation
+
+Each goal runs inside a dedicated `git worktree` rooted at
+`<repo>/.ralph-worktrees/<goal-id>/`. This means:
+
+- **Your main checkout is never touched.** Branch switching, file edits,
+  and commits happen in the worktree — `git status` in your main checkout
+  remains exactly as you left it.
+- **Multiple goals can coexist** on different branches without conflict
+  (each in its own worktree).
+- **Cleanup is explicit.** When a goal finishes (completed / failed /
+  iteration_limited), the worktree stays so you can inspect / merge / push
+  the result. Remove it manually with:
+  ```bash
+  git worktree remove .ralph-worktrees/<goal-id>
+  ```
+- **`.pi-mind/` and `.pi-goals/` resolve to the main repo root** (via
+  `git rev-parse --git-common-dir`), so memory + goal state survive
+  worktree teardown.
+
+> Add `.ralph-worktrees/` to your `.gitignore` so the per-goal worktrees
+> don't show up as untracked content in your main checkout. ralph logs a
+> hint the first time it creates this directory.
+
+If `ensureWorktree` fails (branch already checked out elsewhere, path
+conflict, non-git directory, …) the loop falls back to running in
+`goal.cwd` directly and logs a warning. In that fallback mode you lose
+the isolation guarantee but the goal can still proceed.
 
 ## Dependencies
 
