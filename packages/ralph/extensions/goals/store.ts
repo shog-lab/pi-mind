@@ -120,7 +120,12 @@ export class GoalStore {
       try {
         const raw = JSON.parse(readFileSync(configPath, "utf-8"));
         return { ...DEFAULT_CONFIG, ...raw };
-      } catch {}
+      } catch (e) {
+        // File exists but failed to read / parse — almost always malformed JSON.
+        // Silent fallback to DEFAULT_CONFIG would hide a real user-facing bug
+        // (their override file is being ignored).
+        console.warn(`[pi-goals] failed to parse config at ${configPath}: ${e instanceof Error ? e.message : String(e)}. Using DEFAULT_CONFIG.`);
+      }
     }
     return DEFAULT_CONFIG;
   }

@@ -70,7 +70,11 @@ function resolvePRD(prdPath: string): { userStories: Static<typeof PRDDBSchema>[
       branchName: prd.branchName,
       project: prd.project,
     };
-  } catch {
+  } catch (e) {
+    // File exists (passed the existsSync above) but reading or JSON-parsing
+    // failed — almost always a malformed prd.json. Don't lie to the caller:
+    // log so the user knows their PRD was silently dropped.
+    console.warn(`[pi-goals] failed to parse PRD at ${prdPath}: ${e instanceof Error ? e.message : String(e)}`);
     return null;
   }
 }

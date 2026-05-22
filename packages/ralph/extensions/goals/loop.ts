@@ -12,6 +12,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { execSync, type ExecSyncOptionsWithStringEncoding } from "node:child_process";
 import { spawnPi, type PiTokens } from "@shog-lab/pi-utils";
 import { GoalStore, resolveGoalsDir } from "./store.js";
 import { Goal, GoalState, UserStory, type GoalsConfig } from "./schema.js";
@@ -212,9 +213,7 @@ async function spawnGoalsSubagent(
  */
 function ensureBranch(cwd: string, branchName: string | undefined): void {
   if (!branchName || branchName === "ralph/default") return;
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
-  const opts: import("node:child_process").ExecSyncOptionsWithStringEncoding = {
+  const opts: ExecSyncOptionsWithStringEncoding = {
     cwd,
     encoding: "utf-8",
     timeout: 5000,
@@ -279,13 +278,11 @@ async function executeStory(
 function parseChangedFilesFromGit(stdout: string, cwd: string): string[] {
   // First try the git diff approach (reliable)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
     const files = (execSync("git diff --name-only", {
       cwd,
       encoding: "utf-8" as const,
       timeout: 5000,
-    } as import("node:child_process").ExecSyncOptionsWithStringEncoding) as string)
+    } as ExecSyncOptionsWithStringEncoding) as string)
       .split("\n")
       .map((f: string) => f.trim())
       .filter(Boolean);
@@ -330,13 +327,11 @@ async function verifyStory(
   // Don't trust the execution agent's reported file list
   let verifiedFiles: string[];
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
     verifiedFiles = (execSync("git diff --name-only", {
       cwd: goal.cwd,
       encoding: "utf-8" as const,
       timeout: 5000,
-    } as import("node:child_process").ExecSyncOptionsWithStringEncoding) as string)
+    } as ExecSyncOptionsWithStringEncoding) as string)
       .split("\n")
       .map((f: string) => f.trim())
       .filter(Boolean);

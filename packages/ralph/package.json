@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-goals",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Ralph-style autonomous goal execution for pi-coding-agent: goal tool with PRD loop and self-verification.",
   "type": "module",
   "license": "MIT",
