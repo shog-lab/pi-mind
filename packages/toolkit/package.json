@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-toolkit",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Common pi-coding-agent extensions: web search + image understanding (mmx), MCP server bridge, sub-agent spawn, browser automation (agent-browser).",
   "type": "module",
   "license": "MIT",

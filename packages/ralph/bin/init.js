@@ -98,7 +98,12 @@ function linkInto(srcDir, destDir) {
       continue;
     }
     if (!existsSync(dest)) {
-      try { unlinkSync(dest); console.log(`[pi-goals] removed dangling ${relative(HOST_ROOT, dest)}`); } catch {}
+      try {
+        unlinkSync(dest);
+        console.log(`[pi-goals] removed dangling ${relative(HOST_ROOT, dest)}`);
+      } catch (e) {
+        console.warn(`[pi-goals] failed to remove dangling ${relative(HOST_ROOT, dest)}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 

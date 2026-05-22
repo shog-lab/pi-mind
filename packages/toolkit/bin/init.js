@@ -81,7 +81,16 @@ function linkInto(srcDir, destDir) {
     }
     if (!existsSync(dest)) {
       // existsSync returns false for dangling symlinks
-      try { unlinkSync(dest); console.log(`[pi-toolkit] removed dangling ${relative(HOST_ROOT, dest)}`); } catch {}
+      try {
+        unlinkSync(dest);
+        console.log(`[pi-toolkit] removed dangling ${relative(HOST_ROOT, dest)}`);
+      } catch (e) {
+        // Don't silently absorb a failed unlink — the dangling link will be
+        // re-encountered next install and the user gets to fix the underlying
+        // permission/fs issue once instead of debugging "why is this symlink
+        // still here".
+        console.warn(`[pi-toolkit] failed to remove dangling ${relative(HOST_ROOT, dest)}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 
