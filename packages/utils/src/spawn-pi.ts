@@ -146,10 +146,22 @@ export function spawnPi(opts: SpawnPiOptions): Promise<SpawnPiResult> {
   }
 
   const piBin = process.env.PI_BIN || "pi";
+  // detached: true gives the child its own process group so we can kill the
+  // whole group (pi + anything pi spawned) via process.kill(-pid, signal).
+  //
+  // Without process-group kill, signalling just the top-level pi can leave
+  // grandchildren alive holding the inherited stdout/stderr pipe FDs. Node's
+  // 'close' event waits for BOTH process exit AND stdio close, so the spawn
+  // Promise would hang until those grandchildren exited on their own —
+  // potentially forever for a hung pi. This was the root cause of the
+  // "kills the child on timeout" test timing out under suite load: the
+  // fake pi script `bash -c 'sleep 10'` would leave `sleep` orphaned
+  // holding the pipes after bash died.
   const proc = spawn(piBin, args, {
     cwd,
     env: { ...process.env, ...env },
     stdio,
+    detached: true,
   });
 
   if (logFd !== undefined) closeSync(logFd);
@@ -180,14 +192,27 @@ export function spawnPi(opts: SpawnPiOptions): Promise<SpawnPiResult> {
   }
 
   return new Promise((resolve) => {
+    // Kill the whole process group (negative pid) so any grandchildren pi
+    // spawned die too — otherwise they keep the pipe FDs open and 'close'
+    // never fires. See `detached: true` rationale above.
+    const killGroup = (signal: "SIGTERM" | "SIGKILL"): void => {
+      if (proc.pid === undefined) return;
+      try { process.kill(-proc.pid, signal); }
+      catch { /* group already gone */ }
+    };
+    let killTimer: NodeJS.Timeout | null = null;
     const timer = timeoutMs ? setTimeout(() => {
       killed = true;
-      proc.kill("SIGTERM");
-      setTimeout(() => proc.kill("SIGKILL"), 5000);
+      killGroup("SIGTERM");
+      // 500ms SIGKILL backup: gives well-behaved processes time to clean up
+      // on SIGTERM, but forces termination quickly for stuck ones (well under
+      // any reasonable test-level timeout).
+      killTimer = setTimeout(() => killGroup("SIGKILL"), 500);
     }, timeoutMs) : null;
 
     proc.on("close", (c) => {
       if (timer) clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
       code = c;
 
       // Flush any tail buffer (last line without trailing newline)
