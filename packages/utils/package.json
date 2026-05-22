@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-utils",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared infrastructure for pi-mind packages: pi spawn helper, .pi-mind path resolution.",
   "type": "module",
   "license": "MIT",
