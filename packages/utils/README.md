@@ -1,6 +1,6 @@
 # @shog-lab/pi-utils
 
-Internal infrastructure shared by pi-mind packages (memory, ralph, eval).
+Internal infrastructure shared by pi-mind packages (pi-mind-core, pi-toolkit, pi-goals, pi-eval).
 
 ## What's in here
 
@@ -12,11 +12,13 @@ Internal infrastructure shared by pi-mind packages (memory, ralph, eval).
 
 ## Why a separate package
 
-Memory, ralph, and eval all drive pi programmatically and need a shared
-spawn helper + path resolver. Previously these lived inside `packages/core/lib/`,
-which forced ralph and eval to depend on the entire memory package just to
-get a 200-line utility. Extracting to its own workspace keeps dependencies
-honest: ralph/eval depend on `pi-utils`, not `pi-mind`.
+pi-mind-core, pi-toolkit (subagent), pi-goals, and pi-eval all drive pi
+programmatically and need a shared spawn helper + path resolver.
+Previously these lived inside the memory package, which forced everyone
+else to depend on the entire memory package just to get a small utility.
+Extracting to its own workspace keeps dependencies honest: everyone
+depends on `pi-utils`, not on each other.
 
 This package has no agent-facing tools — it's not loaded as a pi extension.
-For agent-facing shared tools (jimeng, web_search, MCP bridge), see `pi-toolkit`.
+For agent-facing shared tools (web_search, understand_image, mcp-bridge,
+spawn_subagent), see `pi-toolkit`.

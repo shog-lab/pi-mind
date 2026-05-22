@@ -201,7 +201,7 @@ Key implementation notes:
 
 ## Status
 
-Early. The core (memory model, schema, lint, daily-audit, forget) is in active use; APIs may evolve. Tests cover MemoryCore, KnowledgeGraph, forget mechanism, session-archive filter, and extension behavior (130 total, all passing).
+Early. The core (memory model, schema, lint, daily-audit, forget) is in active use; APIs may evolve. Tests cover MemoryCore, KnowledgeGraph, forget mechanism, session-archive filter, and extension behavior (115 total, all passing).
 
 Roadmap (no fixed dates):
 
