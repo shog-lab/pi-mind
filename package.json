@@ -7,7 +7,7 @@
   "license": "MIT",
   "workspaces": [
     "packages/utils",
-    "packages/memory",
+    "packages/core",
     "packages/toolkit",
     "packages/ralph",
     "packages/eval"

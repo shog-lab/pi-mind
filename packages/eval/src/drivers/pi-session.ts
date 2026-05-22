@@ -29,7 +29,7 @@ export interface PiSessionDriverOptions {
   timeoutMs?: number;
   /**
    * Path to pi-mind's compiled memory extension entry (index.js). If omitted,
-   * the driver walks up from this module to find packages/memory/dist/extensions/memory/index.js
+   * the driver walks up from this module to find packages/core/dist/extensions/memory/index.js
    * — works when running inside the pi-mind monorepo, fails loudly otherwise.
    */
   memoryExtensionPath?: string;
@@ -37,7 +37,7 @@ export interface PiSessionDriverOptions {
 
 /**
  * Auto-resolve the memory extension by walking up from this file's location
- * to the monorepo root, then into packages/memory.
+ * to the monorepo root, then into packages/core.
  *
  * Returns null if not found (caller decides how to fail).
  */
@@ -63,7 +63,7 @@ export class PiSessionDriver implements Driver {
     if (!resolved) {
       throw new Error(
         "PiSessionDriver: could not locate pi-mind memory extension. " +
-        "Build the memory package first (`npm run build --workspace packages/memory`), " +
+        "Build the memory package first (`npm run build --workspace packages/core`), " +
         "or pass memoryExtensionPath explicitly.",
       );
     }

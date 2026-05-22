@@ -4,7 +4,7 @@ Self-evolving agent platform built on top of [pi-coding-agent](https://github.co
 
 ## Packages
 
-### [`@shog-lab/pi-mind-core`](packages/memory/) — the core
+### [`@shog-lab/pi-mind-core`](packages/core/) — the core
 Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), **knowledge/** (compiled facts as markdown), **graph/** (entity-relationship triples). FTS5 + vector + KG retrieval. Daily-audit loop, subject classification, schema linting.
 
 ### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
@@ -60,7 +60,7 @@ npm publish -w @shog-lab/pi-utils            # publish utils only
 The monorepo's own `.pi/extensions/` is symlinked into `packages/*/dist/` via each postinstall. Running `pi` here loads memory, toolkit, ralph — letting the agent work on its own codebase.
 
 ```bash
-npx tsc -w -p packages/memory   # watch + rebuild memory; pi picks up dist/ changes on next invocation
+npx tsc -w -p packages/core   # watch + rebuild memory; pi picks up dist/ changes on next invocation
 ```
 
 ## History

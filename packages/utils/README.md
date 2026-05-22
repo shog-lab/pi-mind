@@ -13,7 +13,7 @@ Internal infrastructure shared by pi-mind packages (memory, ralph, eval).
 ## Why a separate package
 
 Memory, ralph, and eval all drive pi programmatically and need a shared
-spawn helper + path resolver. Previously these lived inside `packages/memory/lib/`,
+spawn helper + path resolver. Previously these lived inside `packages/core/lib/`,
 which forced ralph and eval to depend on the entire memory package just to
 get a 200-line utility. Extracting to its own workspace keeps dependencies
 honest: ralph/eval depend on `pi-utils`, not `pi-mind`.

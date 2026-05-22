@@ -3,7 +3,7 @@
  * Not part of `npm test` — integration, needs Ollama with the configured model.
  *
  * Usage:
- *   npm run verify-worth-remembering --workspace=packages/memory
+ *   npm run verify-worth-remembering --workspace=packages/core
  *   PI_MIND_LLM_MODEL=qwen3:4b npx tsx scripts/verify-worth-remembering.ts
  *
  * Model selection:

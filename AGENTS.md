@@ -8,7 +8,7 @@ This document provides a guide for AI agents working in this repository.
 
 | Package | Published as | Description |
 |---|---|---|
-| [`packages/memory`](packages/memory/) | `pi-mind` | Persistent memory + self-evolution (raw / knowledge / graph layers) |
+| [`packages/core`](packages/core/) | `pi-mind` | Persistent memory + self-evolution (raw / knowledge / graph layers) |
 | [`packages/toolkit`](packages/toolkit/) | `pi-toolkit` | Common tools: image generation, web search, browser automation |
 | [`packages/ralph`](packages/ralph/) | `pi-goals` | Ralph-style autonomous goal execution with PRD loop |
 
@@ -31,7 +31,7 @@ npm test -w pi-mind          # Test memory package
 Watch mode for active development:
 
 ```bash
-npx tsc -w -p packages/memory    # Watch memory package
+npx tsc -w -p packages/core    # Watch memory package
 npx tsc -w -p packages/ralph    # Watch goals package
 ```
 
@@ -43,8 +43,8 @@ When running `pi` in this repo, the following are auto-loaded from `.pi/`:
 
 | Extension | Source | Purpose |
 |---|---|---|
-| `memory` | `packages/memory/dist/extensions/memory/` | Three-layer memory system (raw/knowledge/graph) |
-| `subagent` | `packages/memory/dist/extensions/subagent/` | Spawn focused sub-agents for isolated tasks |
+| `memory` | `packages/core/dist/extensions/memory/` | Three-layer memory system (raw/knowledge/graph) |
+| `subagent` | `packages/core/dist/extensions/subagent/` | Spawn focused sub-agents for isolated tasks |
 | `goals` | `packages/ralph/dist/extensions/goals/` | `/goal` command + goal management tools |
 | `jimeng` | `packages/toolkit/dist/extensions/jimeng/` | Volcengine Jimeng T2I image generation |
 | `web_search` | `packages/toolkit/dist/extensions/web_search/` | Web search via mmx CLI |
@@ -54,9 +54,9 @@ When running `pi` in this repo, the following are auto-loaded from `.pi/`:
 
 | Skill | Source | Purpose |
 |---|---|---|
-| `daily-audit` | `packages/memory/skills/daily-audit/` | Memory hygiene audit loop |
-| `wiki-lint` | `packages/memory/skills/wiki-lint/` | Schema validation & auto-fix |
-| `scheduling` | `packages/memory/skills/scheduling/` | Cron job setup helper |
+| `daily-audit` | `packages/core/skills/daily-audit/` | Memory hygiene audit loop |
+| `wiki-lint` | `packages/core/skills/wiki-lint/` | Schema validation & auto-fix |
+| `scheduling` | `packages/core/skills/scheduling/` | Cron job setup helper |
 | `agent-browser` | `node_modules/agent-browser/skills/agent-browser/` | Browser automation |
 | `prd` | `packages/ralph/skills/prd/` | Generate Product Requirements Documents |
 | `ralph` | `packages/ralph/skills/ralph/` | Convert markdown PRD to prd.json format |
@@ -110,12 +110,12 @@ Goals state and logs live in `$PI_GOALS_DIR` (default `./.pi-goals/`):
 
 | Path | Purpose |
 |---|---|
-| `packages/memory/lib/schema.ts` | Single source of truth for frontmatter schema |
-| `packages/memory/core.ts` | Memory retrieval & injection logic |
-| `packages/memory/extensions/memory/index.ts` | Extension entry point |
-| `packages/memory/extensions/subagent/index.ts` | Sub-agent spawn logic |
-| `packages/memory/skills/daily-audit/SKILL.md` | Daily audit skill |
-| `packages/memory/skills/wiki-lint/SKILL.md` | Wiki lint skill |
+| `packages/core/lib/schema.ts` | Single source of truth for frontmatter schema |
+| `packages/core/core.ts` | Memory retrieval & injection logic |
+| `packages/core/extensions/memory/index.ts` | Extension entry point |
+| `packages/core/extensions/subagent/index.ts` | Sub-agent spawn logic |
+| `packages/core/skills/daily-audit/SKILL.md` | Daily audit skill |
+| `packages/core/skills/wiki-lint/SKILL.md` | Wiki lint skill |
 | `packages/ralph/lib/schema.ts` | Goal & UserStory type definitions |
 | `packages/ralph/lib/store.ts` | SQLite-backed goal persistence |
 | `packages/ralph/lib/loop.ts` | Ralph-style execution loop with verification |

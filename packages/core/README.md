@@ -165,7 +165,7 @@ Two scripts ship for measuring memory quality:
   ```bash
   DEEPSEEK_API_KEY=... npx tsx scripts/run-longmemeval.ts --limit 100
   ```
-- **`scripts/verify-worth-remembering.ts`** — checks the LLM detector's precision/recall against a hand-curated case set. Useful before merging changes to the prompt. Run with `PI_MIND_LLM_MODEL=qwen3:4b npm run verify-worth-remembering --workspace=packages/memory`.
+- **`scripts/verify-worth-remembering.ts`** — checks the LLM detector's precision/recall against a hand-curated case set. Useful before merging changes to the prompt. Run with `PI_MIND_LLM_MODEL=qwen3:4b npm run verify-worth-remembering --workspace=packages/core`.
 
 Both bypass any container or daemon — they import `MemoryCore` directly. This makes the memory module independently testable.
 

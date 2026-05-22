@@ -1,6 +1,6 @@
 /**
  * Type stubs for pi-coding-agent.
- * Same pattern as packages/memory/lib/declarations.d.ts — using `any` to keep
+ * Same pattern as packages/core/lib/declarations.d.ts — using `any` to keep
  * extension implementations decoupled from upstream's strict ExtensionContext
  * type. Tightening these stubs to the real types is a future refactor.
  */
