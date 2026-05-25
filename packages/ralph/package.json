@@ -1,9 +1,16 @@
 {
   "name": "@shog-lab/pi-goals",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Ralph-style autonomous goal execution for pi-coding-agent: single `goal` tool, prd.json as state, per-goal git worktree isolation, isolated verification sub-agent.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shog-lab/pi-mind.git",
+    "directory": "packages/ralph"
+  },
+  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/ralph",
+  "bugs": "https://github.com/shog-lab/pi-mind/issues",
   "scripts": {
     "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
     "typecheck": "tsc --noEmit",

@@ -1,12 +1,19 @@
 {
   "name": "@shog-lab/pi-utils",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared infrastructure for pi-mind packages: pi spawn helper, .pi-mind path resolution.",
   "type": "module",
   "license": "MIT",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist/**", "README.md", "LICENSE"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shog-lab/pi-mind.git",
+    "directory": "packages/utils"
+  },
+  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/utils",
+  "bugs": "https://github.com/shog-lab/pi-mind/issues",
   "scripts": {
     "build": "rm -rf dist && tsc",
     "typecheck": "tsc --noEmit",

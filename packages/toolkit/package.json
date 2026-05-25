@@ -1,9 +1,16 @@
 {
   "name": "@shog-lab/pi-toolkit",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Common pi-coding-agent extensions: web search + image understanding (mmx), MCP server bridge, sub-agent spawn, browser automation (agent-browser).",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shog-lab/pi-mind.git",
+    "directory": "packages/toolkit"
+  },
+  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/toolkit",
+  "bugs": "https://github.com/shog-lab/pi-mind/issues",
   "scripts": {
     "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
     "typecheck": "tsc --noEmit",
