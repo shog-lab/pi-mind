@@ -1,5 +1,16 @@
 # @shog-lab/pi-goals
 
+> ## ⚠️ 0.5.0 is a major simplification with BREAKING CHANGES
+>
+> If you depended on any of: `update_goal` / `list_goals` / `get_goal` tools,
+> `tokenBudget` enforcement, cross-pi-session pause/resume, `goal --objective` (PRD-less mode),
+> SQLite-backed goal state, or `pi-goals-config.json` —
+> **pin to `@shog-lab/pi-goals@0.4.0`**.
+>
+> 0.4.0 is supported as the official fallback for the kitchen-sink feature set.
+> See **[What changed from 0.4.0](#what-changed-from-040)** at the bottom for the
+> full migration list.
+
 **Ralph-style autonomous goal execution for [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent).**
 
 Single `goal` tool. `prd.json` is the state. Per-goal git worktree gives physical isolation. Isolated verification sub-agent that can't lie. That's it.
