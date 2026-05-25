@@ -1,23 +1,26 @@
 /**
- * Goal Loop — Ralph-style autonomous execution with self-verification.
+ * Goal Loop — simplified Ralph-style autonomous execution.
  *
- * Architecture:
- *   Main pi (goals extension) owns state machine
- *   Execution sub-agent: implements the story (full tools)
- *   Verification sub-agent: checks evidence against criteria (restricted tools)
+ * State lives in prd.json. Each iteration: pick next !passes story, spawn an
+ * execution sub-pi, spawn a verification sub-pi, flip passes:true if verified,
+ * write prd.json back to disk. Loop until all stories pass or maxIterations hit.
  *
- * Sub-agents run with --no-extensions and --tools allowlist.
- * The goals extension injects goal context via --append-system-prompt.
+ * No DB, no state machine, no global lock. Per-goal worktree gives physical
+ * isolation; prd.json being the source of truth gives free pause/resume
+ * (ctrl+C, re-run /goal --from prd.json — loop picks up where it left off).
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
 import { execSync, type ExecSyncOptionsWithStringEncoding } from "node:child_process";
 import { spawnPi, type PiTokens } from "@shog-lab/pi-utils";
-import { GoalStore, resolveGoalsDir } from "./store.js";
 import { Value } from "@sinclair/typebox/value";
-import { Goal, GoalState, UserStory, VerificationResultSchema, type GoalsConfig } from "./schema.js";
-import { withGroupLock } from "./mutex.js";
+import {
+  PRD, PRDSchema, UserStory, VerificationResultSchema,
+  EXECUTION_TOOLS, VERIFICATION_TOOLS, DEFAULT_MAX_ITERATIONS,
+} from "./schema.js";
 
 // --- Prompt templates ---
 
@@ -97,7 +100,7 @@ Return ONLY a JSON object:
 {{
   "passes": true/false,
   "evidence": {{
-    "criteria_name": "actual evidence found (file contents, command output, etc.)"
+    "criterion_name": "actual evidence found (file contents, command output, etc.)"
   }},
   "incompleteReasons": ["list of reasons why this does NOT pass"]
 }}
@@ -108,134 +111,58 @@ Do NOT return anything else. Only the JSON object.
 Current directory: {cwd}
 `;
 
-// Default tool allowlists — names must be lowercase to match pi's tool registry.
-// (Pi's --tools flag is case-sensitive: "Bash" does NOT match the built-in "bash".)
-// grep/find aren't standalone pi tools — agents access them via the bash tool.
-const DEFAULT_EXECUTION_TOOLS = ["bash", "read", "write", "edit"];
-const DEFAULT_VERIFICATION_TOOLS = ["bash", "read"];
-
-// --- Progress log helpers ---
-
-// progress.txt is shared across ALL goals in the goals dir.
-// For goal-specific logs, use episodic/ralph/iteration-*.jsonl instead.
-// The loop writes to global progress.txt (for cross-goal learnings) and
-// per-goal progress files (to avoid pollution). loadProgressLog only reads
-// the global one if it exists (for backward compat when loading goals from DB).
-function loadProgressLog(_goal: Goal): string {
-  const logPath = join(resolveGoalsDir(), "progress.txt");
-  if (existsSync(logPath)) {
-    try {
-      return readFileSync(logPath, "utf-8");
-    } catch {}
-  }
-  return "# Progress Log\n\nNo previous iterations.\n";
-}
-
-function appendProgress(goal: Goal, entry: string): void {
-  // Write to goal-specific progress file to avoid cross-goal pollution (issue #9)
-  const progressPath = join(resolveGoalsDir(), "episodic", "ralph", `progress-${goal.id}.txt`);
-  appendFileSync(progressPath, `\n${entry}\n---\n`);
-
-  // Also append to global progress.txt for backward compat + cross-goal learnings
-  const globalLogPath = join(resolveGoalsDir(), "progress.txt");
-  appendFileSync(globalLogPath, `\n${entry}\n---\n`);
-}
-
-// --- Sub-agent spawn helpers ---
-
-interface SubAgentResult {
-  stdout: string;
-  stderr: string;
-  code: number;
-  killed: boolean;
-  /** Token usage from pi's agent_end event. Undefined if pi didn't complete normally. */
-  tokens?: PiTokens;
-}
-
-interface SubAgentOptions {
-  timeoutMs?: number;
-  /** Tool allowlist — passed as --tools flag */
-  tools?: string[];
-}
+// --- PRD I/O ---
 
 /**
- * Spawn a sub-agent with goals-specific context injection.
- *
- * @param cwd Working directory
- * @param systemPrompt Additional system prompt to inject
- * @param userPrompt The user prompt
- * @param options.tools If provided, restrict to this allowlist via --tools flag
+ * Read prd.json and schema-validate. Returns null on any failure (missing,
+ * malformed JSON, wrong shape) — caller surfaces a useful error.
  */
-async function spawnGoalsSubagent(
-  cwd: string,
-  systemPrompt: string,
-  userPrompt: string,
-  options: SubAgentOptions = {}
-): Promise<SubAgentResult> {
-  const args = [
-    "-p",
-    "--no-extensions",          // No extensions loaded
-    "--model", process.env.MODEL ?? "minimax-cn/MiniMax-M2.7",
-    "--append-system-prompt", systemPrompt,
-  ];
-
-  // Apply tool allowlist if specified (via --tools flag)
-  if (options.tools && options.tools.length > 0) {
-    args.push("--tools", options.tools.join(","));
+export function loadPRD(prdPath: string): PRD | { error: string } {
+  if (!existsSync(prdPath)) return { error: `PRD not found: ${prdPath}` };
+  let raw: string;
+  try { raw = readFileSync(prdPath, "utf-8"); }
+  catch (e) { return { error: `failed to read PRD: ${e instanceof Error ? e.message : String(e)}` }; }
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); }
+  catch (e) { return { error: `PRD is not valid JSON: ${e instanceof Error ? e.message : String(e)}` }; }
+  if (!Value.Check(PRDSchema, parsed)) {
+    const errors = [...Value.Errors(PRDSchema, parsed)].slice(0, 5)
+      .map((err) => `${err.path || "(root)"}: ${err.message}`).join("; ");
+    return { error: `PRD schema mismatch: ${errors}` };
   }
-
-  args.push(userPrompt);
-
-  const { timeoutMs = 300_000 } = options;
-
-  let stdout = "";
-  let stderr = "";
-
-  const result = await spawnPi({
-    cwd,
-    args,
-    onStdout: (d) => { stdout += d; },
-    onStderr: (d) => { stderr += d; },
-    timeoutMs,
-  });
-
-  return { stdout, stderr, code: result.code ?? -1, killed: result.killed, tokens: result.tokens };
+  return parsed;
 }
 
-// --- Execution & Verification ---
+/** Atomically write prd.json back (write to .tmp then rename). */
+function savePRD(prdPath: string, prd: PRD): void {
+  const tmpPath = `${prdPath}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify(prd, null, 2) + "\n");
+  // Same-dir rename is atomic on POSIX — readers see either old or new file,
+  // never a half-written intermediate.
+  execSync(`mv ${JSON.stringify(tmpPath)} ${JSON.stringify(prdPath)}`);
+}
+
+// --- Worktree ---
 
 /**
- * @internal — exported only for e2e probe testing. Not part of the public
- * extension surface; do not import from outside this package.
+ * Materialize a per-goal git worktree at `<repo>/.ralph-worktrees/<key>/` on
+ * the given branch, return its path. Returns null if cwd is not in a git repo
+ * (caller falls back to operating in cwd directly).
  *
- * Materialize a per-goal git worktree at `<repo-root>/.ralph-worktrees/<goal-id>`
- * on the goal's branch, and return the worktree path. Returns null if cwd is
- * not in a git repo (caller falls back to operating in cwd directly).
+ * Worktree isolation gives ralph a clean physical sandbox per goal — the
+ * user's main checkout is never touched, multiple goals can coexist on
+ * different branches, and `.pi-mind/` + `.pi-goals/` still resolve to the
+ * main repo root via `git rev-parse --git-common-dir` (pi-utils paths.ts).
  *
- * Why a worktree instead of `git checkout` in-place: the previous design
- * switched branches IN the user's main checkout, which:
- *   - Stomped the user's current working state (uncommitted changes followed
- *     the checkout, or git refused and ralph proceeded on the wrong branch)
- *   - Made multi-goal concurrency impossible (one cwd, one branch)
- *   - Left the user on `ralph/<slug>` after ralph finished, requiring a
- *     manual `git checkout` to get back
- *
- * Worktree-based isolation gives ralph a clean physical sandbox per goal.
- * The shared `.pi-mind/` and `.pi-goals/` dirs still resolve to the main
- * repo root via `git rev-parse --git-common-dir` (see pi-utils paths.ts),
- * so memory + goal state survive worktree teardown.
- *
- * Idempotent: if the worktree already exists on disk and is registered with
- * git, reuses it (paused goal resume path). Falls through with a warning if
- * the path exists but isn't a registered worktree — user must clean up
- * manually with `git worktree prune` or `rm -rf .ralph-worktrees/<id>`.
+ * Idempotent: if a worktree is already registered at the path, reuse it
+ * (resume path).
  */
 export function ensureWorktree(
   cwd: string,
-  goalId: string,
-  branchName: string | undefined
+  key: string,
+  branchName: string
 ): string | null {
-  if (!branchName || branchName === "ralph/default") return null;
+  if (!branchName) return null;
   const opts: ExecSyncOptionsWithStringEncoding = {
     cwd,
     encoding: "utf-8",
@@ -243,65 +170,47 @@ export function ensureWorktree(
     stdio: ["ignore", "pipe", "pipe"],
   };
 
-  // Find repo root from cwd (cwd might be a subdir of the project).
   let repoRoot: string;
-  try {
-    repoRoot = execSync("git rev-parse --show-toplevel", opts).trim();
-  } catch {
-    return null; // not in a git repo — skip worktree, caller falls back
-  }
+  try { repoRoot = execSync("git rev-parse --show-toplevel", opts).trim(); }
+  catch { return null; }
 
-  const worktreePath = join(repoRoot, ".ralph-worktrees", goalId);
+  const worktreePath = join(repoRoot, ".ralph-worktrees", key);
 
-  // Already registered worktree? `git worktree list --porcelain` prints
-  // `worktree <abspath>` lines. If our path is among them, reuse.
+  // Already-registered worktree at this path? Reuse.
   let alreadyRegistered = false;
   try {
     const listing = execSync("git worktree list --porcelain", opts);
     alreadyRegistered = listing.split("\n").some((line) =>
       line.startsWith("worktree ") && line.slice("worktree ".length).trim() === worktreePath
     );
-  } catch { /* git too old, or repo broken — fall through to add */ }
+  } catch { /* fall through */ }
 
   if (alreadyRegistered) {
-    if (!existsSync(worktreePath)) {
-      // Registered but path missing — registration is stale. Prune + recreate.
-      try { execSync("git worktree prune", opts); } catch { /* best-effort */ }
-    } else {
-      return worktreePath;
-    }
+    if (existsSync(worktreePath)) return worktreePath;
+    // Registered but path missing — stale, prune and recreate.
+    try { execSync("git worktree prune", opts); } catch { /* best-effort */ }
   }
 
-  // Ensure the parent dir exists. `.ralph-worktrees/` should be added to
-  // .gitignore by the user — we don't auto-modify their .gitignore. Log a
-  // one-time hint when we first create the dir.
   const parent = join(repoRoot, ".ralph-worktrees");
   if (!existsSync(parent)) {
     mkdirSync(parent, { recursive: true });
     console.warn(
-      `[goals] created ${parent} — add ".ralph-worktrees/" to your .gitignore to avoid tracking ralph worktrees`
+      `[goals] created ${parent} — add ".ralph-worktrees/" to your .gitignore`
     );
   }
 
-  // Does the branch already exist?
   let branchExists = false;
-  try {
-    execSync(`git rev-parse --verify ${JSON.stringify(branchName)}`, opts);
-    branchExists = true;
-  } catch { /* branch missing */ }
+  try { execSync(`git rev-parse --verify ${JSON.stringify(branchName)}`, opts); branchExists = true; }
+  catch { /* missing */ }
 
   try {
     if (branchExists) {
-      // Branch must not already be checked out elsewhere (including the main
-      // checkout). git worktree add will fail with a clear message if so.
       execSync(`git worktree add ${JSON.stringify(worktreePath)} ${JSON.stringify(branchName)}`, opts);
     } else {
       execSync(`git worktree add -b ${JSON.stringify(branchName)} ${JSON.stringify(worktreePath)}`, opts);
     }
     return worktreePath;
   } catch (err) {
-    // Surface the actual git error message — common causes: branch checked
-    // out elsewhere, path collides with existing dir, dirty index, etc.
     console.warn(
       `[goals] failed to create worktree for "${branchName}" at ${worktreePath}:`,
       err instanceof Error ? err.message : err
@@ -310,147 +219,147 @@ export function ensureWorktree(
   }
 }
 
-async function executeStory(
-  goal: Goal,
-  story: UserStory,
-  config: GoalsConfig
-): Promise<{ changedFiles: string[]; output: string; commitHash?: string; tokens?: PiTokens }> {
-  const progressLog = loadProgressLog(goal);
+// --- Sub-agent spawn ---
 
+interface SubAgentResult {
+  stdout: string;
+  stderr: string;
+  code: number;
+  killed: boolean;
+  tokens?: PiTokens;
+}
+
+async function spawnSubagent(
+  cwd: string,
+  systemPrompt: string,
+  userPrompt: string,
+  tools: readonly string[],
+  timeoutMs: number,
+): Promise<SubAgentResult> {
+  const args = [
+    "-p",
+    "--no-extensions",
+    "--model", process.env.MODEL ?? "minimax-cn/MiniMax-M2.7",
+    "--append-system-prompt", systemPrompt,
+    "--tools", tools.join(","),
+    userPrompt,
+  ];
+  let stdout = "";
+  let stderr = "";
+  const result = await spawnPi({
+    cwd, args,
+    onStdout: (d) => { stdout += d; },
+    onStderr: (d) => { stderr += d; },
+    timeoutMs,
+  });
+  return { stdout, stderr, code: result.code ?? -1, killed: result.killed, tokens: result.tokens };
+}
+
+// --- Progress log (per-worktree) ---
+
+function loadProgressLog(worktreePath: string): string {
+  const p = join(worktreePath, "ralph-progress.txt");
+  if (existsSync(p)) {
+    try { return readFileSync(p, "utf-8"); } catch { /* ignore */ }
+  }
+  return "# Progress Log\n\nNo previous iterations.\n";
+}
+
+function appendProgress(worktreePath: string, entry: string): void {
+  const p = join(worktreePath, "ralph-progress.txt");
+  appendFileSync(p, `\n${entry}\n---\n`);
+}
+
+// --- Iteration steps ---
+
+interface StoryExecutionResult {
+  changedFiles: string[];
+  output: string;
+  tokens?: PiTokens;
+}
+
+async function executeStory(
+  prdPath: string,
+  workCwd: string,
+  story: UserStory,
+  timeoutMs: number,
+): Promise<StoryExecutionResult> {
+  const progressLog = loadProgressLog(workCwd);
   const systemPrompt = [
     "You are Ralph, an autonomous coding agent.",
     "Work on ONE story per iteration.",
     "Commit after each story if quality checks pass.",
-    "Read progress.txt for learnings from previous iterations.",
-    "",
-    `PRD file: ${goal.prdFile || "no prd file"}`,
-    "Branch: " + goal.branchName,
   ].join("\n");
-
-  // workCwd is the worktree (isolation sandbox) when available, else falls
-  // back to the user's project root.
-  const workCwd = goal.worktreePath ?? goal.cwd;
 
   const prompt = EXECUTION_PROMPT_TEMPLATE
     .replace("{progressLog}", progressLog)
     .replace("{storyJson}", JSON.stringify(story, null, 2))
     .replace("{cwd}", workCwd)
-    .replace("{prdFile}", goal.prdFile || "no prd file");
+    .replace("{prdFile}", prdPath);
 
-  // Pass execution tools via --tools flag (from config) — issue #2 fix
-  const execTools = config.executionTools ?? DEFAULT_EXECUTION_TOOLS;
-  const result = await spawnGoalsSubagent(workCwd, systemPrompt, prompt, {
-    tools: execTools,
-  });
+  const result = await spawnSubagent(workCwd, systemPrompt, prompt, EXECUTION_TOOLS, timeoutMs);
 
-  // Parse output for changed files and commit hash
-  const changedFiles = parseChangedFilesFromGit(result.stdout, workCwd);
-  const commitHash = parseCommitHash(result.stdout);
-
-  return { changedFiles, output: result.stdout, commitHash, tokens: result.tokens };
-}
-
-/**
- * Parse changed files using git diff --name-only (robust, issue #5 fix).
- * Falls back to regex parsing if git fails.
- */
-function parseChangedFilesFromGit(stdout: string, cwd: string): string[] {
-  // First try the git diff approach (reliable)
+  // Prefer git's view of changed files over parsing agent's prose.
+  let changedFiles: string[] = [];
   try {
-    const files = (execSync("git diff --name-only", {
-      cwd,
-      encoding: "utf-8" as const,
-      timeout: 5000,
+    changedFiles = (execSync("git diff --name-only", {
+      cwd: workCwd, encoding: "utf-8", timeout: 5000,
     } as ExecSyncOptionsWithStringEncoding) as string)
-      .split("\n")
-      .map((f: string) => f.trim())
-      .filter(Boolean);
-    if (files.length > 0) return files;
-  } catch {}
+      .split("\n").map((f) => f.trim()).filter(Boolean);
+  } catch { /* git failed; fall back to regex */ }
+  if (changedFiles.length === 0) {
+    const m = result.stdout.match(/Changed files:\s*\[(.*?)\]/);
+    if (m) changedFiles = m[1].split(",").map((f) => f.trim()).filter(Boolean);
+  }
 
-  // Fallback to regex parsing (fragile but better than nothing)
-  return parseChangedFilesFallback(stdout);
+  return { changedFiles, output: result.stdout, tokens: result.tokens };
 }
 
-/**
- * Last-resort regex parser for `Changed files: [...]` lines in agent output.
- * Called by parseChangedFilesFromGit() when `git diff --name-only` returned
- * nothing — no working tree, no git binary, or git failed. Fragile (only
- * catches one specific format the execution sub-agent emits) but better
- * than reporting zero changes when files actually changed.
- *
- * (Was tagged @deprecated, but that was misleading: the primary path still
- * delegates here on git failure, so the function is intentionally kept.)
- */
-function parseChangedFilesFallback(output: string): string[] {
-  const match = output.match(/Changed files:\s*\[(.*?)\]/);
-  if (!match) return [];
-  return match[1].split(",").map((f: string) => f.trim()).filter(Boolean);
-}
-
-function parseCommitHash(output: string): string | undefined {
-  const match = output.match(/Commit:\s*([a-f0-9]+)/i);
-  return match ? match[1] : undefined;
+interface VerificationOutcome {
+  passes: boolean;
+  evidence: Record<string, string>;
+  incompleteReasons: string[];
+  tokens?: PiTokens;
 }
 
 async function verifyStory(
-  goal: Goal,
+  workCwd: string,
   story: UserStory,
   changedFiles: string[],
-  config: GoalsConfig
-): Promise<{ passes: boolean; evidence: Record<string, string>; incompleteReasons: string[]; tokens?: PiTokens }> {
-  // Verification tools are restricted to read-only + browser inspection (issue #1 fix)
-  const verifyTools = config.verificationTools ?? DEFAULT_VERIFICATION_TOOLS;
-
-  // Same workCwd as executeStory — verification runs in the worktree so it
-  // sees the exact files the execution agent touched.
-  const workCwd = goal.worktreePath ?? goal.cwd;
-
-  // For verification, always re-discover changed files via git diff (issue #6 fix)
-  // Don't trust the execution agent's reported file list
+  timeoutMs: number,
+): Promise<VerificationOutcome> {
+  // Re-discover changed files from git in case execution agent's list was off.
   let verifiedFiles: string[];
   try {
     verifiedFiles = (execSync("git diff --name-only", {
-      cwd: workCwd,
-      encoding: "utf-8" as const,
-      timeout: 5000,
+      cwd: workCwd, encoding: "utf-8", timeout: 5000,
     } as ExecSyncOptionsWithStringEncoding) as string)
-      .split("\n")
-      .map((f: string) => f.trim())
-      .filter(Boolean);
-  } catch {
-    verifiedFiles = changedFiles; // fallback to reported list if git fails
-  }
+      .split("\n").map((f) => f.trim()).filter(Boolean);
+  } catch { verifiedFiles = changedFiles; }
 
   const systemPrompt = [
     "You are a verification agent.",
     "Your ONLY job is to verify completion.",
     "You CANNOT modify any files.",
     "You MUST check actual evidence.",
-    `Tools available: ${verifyTools.join(", ")}.`,
-    "",
+    `Tools available: ${VERIFICATION_TOOLS.join(", ")}.`,
     `Changed files (from git diff): ${verifiedFiles.join(", ") || "none"}`,
   ].join("\n");
 
   const prompt = VERIFICATION_PROMPT_TEMPLATE
     .replace("{storyJson}", JSON.stringify(story, null, 2))
     .replace("{changedFiles}", verifiedFiles.join(", ") || "none")
-    .replace("{acceptanceCriteriaFormatted}", story.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n"))
+    .replace("{acceptanceCriteriaFormatted}",
+      story.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n"))
     .replace("{cwd}", workCwd);
 
-  const result = await spawnGoalsSubagent(workCwd, systemPrompt, prompt, {
-    tools: verifyTools,
-  });
+  const result = await spawnSubagent(workCwd, systemPrompt, prompt, VERIFICATION_TOOLS, timeoutMs);
 
-  // Extract JSON from output (might be wrapped in markdown) and validate it
-  // against VerificationResultSchema. Schema validation catches a class of
-  // sub-agent regressions that the old !!parsed.passes coercion would miss:
-  //   - `{"passes": "yes"}`     → was truthy → falsely "passed"
-  //   - `{"passes": null}`      → was falsy → false-failed
-  //   - `{"pass": true}`        → typo → undefined → false-failed silently
-  //   - missing field           → defaulted → silently lost info
-  // Now: anything not matching the schema falls through to the parseError
-  // branch with a useful message instead of being misinterpreted.
+  // Schema-validate the JSON the verification agent emitted. This catches a
+  // class of sub-agent regressions that loose coercion would miss:
+  //   - {"passes": "yes"}     → was truthy → false-passed
+  //   - {"passes": null}      → was falsy → false-failed
+  //   - {"pass": true}        → typo → undefined → false-failed silently
   const jsonMatch = result.stdout.match(/\{[\s\S]*"passes"[\s\S]*\}/);
   if (jsonMatch) {
     try {
@@ -463,7 +372,6 @@ async function verifyStory(
           tokens: result.tokens,
         };
       }
-      // Parsed JSON but shape wrong — surface what's expected vs what we got.
       const errors = [...Value.Errors(VerificationResultSchema, parsed)].slice(0, 3)
         .map((e) => `${e.path || "(root)"}: ${e.message}`).join("; ");
       return {
@@ -473,8 +381,6 @@ async function verifyStory(
         tokens: result.tokens,
       };
     } catch (e) {
-      // JSON.parse failed — agent emitted something that started with { but
-      // wasn't valid JSON. Capture the snippet so the user can diagnose.
       return {
         passes: false,
         evidence: { parseError: e instanceof Error ? e.message : String(e), raw: jsonMatch[0].slice(0, 500) },
@@ -484,7 +390,6 @@ async function verifyStory(
     }
   }
 
-  // No JSON-shaped substring found at all — sub-agent didn't even attempt the contract.
   return {
     passes: false,
     evidence: { parseError: "no JSON found in verification output", raw: result.stdout.slice(0, 500) },
@@ -495,256 +400,151 @@ async function verifyStory(
 
 // --- Main loop ---
 
+export interface LoopOptions {
+  prdPath: string;
+  cwd: string;
+  branchName?: string;     // overrides PRD's branchName if set
+  maxIterations?: number;
+  /** Per-sub-agent timeout in ms (default: 5 min) */
+  subAgentTimeoutMs?: number;
+}
+
 export interface LoopResult {
-  goalId: string;
   completed: boolean;
-  finalState: GoalState;
   iterationsRun: number;
+  totalTokens: PiTokens;
   reason?: string;
 }
 
-/**
- * Run the goal loop until completion or max iterations.
- *
- * This is called by the goals extension when goal tool is invoked.
- * The main pi process runs this loop synchronously (issue #7 — async but blocking).
- */
-export async function runGoalLoop(
-  goal: Goal,
-  store: GoalStore,
-  config: GoalsConfig
-): Promise<LoopResult> {
-  // Ensure we're active
-  store.transitionTo(goal.id, "active");
-
-  try {
-    return await withGroupLock<LoopResult>(goal.cwd, async () => {
-      return await runLoopInternal(goal, store, config);
-    });
-  } catch (err) {
-    store.transitionTo(goal.id, "failed");
-    return {
-      goalId: goal.id,
-      completed: false,
-      finalState: "failed",
-      iterationsRun: goal.currentIteration,
-      reason: String(err),
-    };
-  }
+function emptyTokens(): PiTokens {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, costUsd: 0 };
 }
 
-async function runLoopInternal(
-  goal: Goal,
-  store: GoalStore,
-  config: GoalsConfig
-): Promise<LoopResult> {
-  const episodicDir = join(resolveGoalsDir(), "episodic", "ralph");
-  mkdirSync(episodicDir, { recursive: true });
+/** Mutates `into` in-place. */
+function addTokens(into: PiTokens, b: PiTokens | undefined): void {
+  if (!b) return;
+  into.input += b.input;
+  into.output += b.output;
+  into.cacheRead += b.cacheRead;
+  into.cacheWrite += b.cacheWrite;
+  into.totalTokens += b.totalTokens;
+  into.costUsd += b.costUsd;
+}
 
-  // Materialize a per-goal worktree on goal.branchName. All sub-agent spawns
-  // + git inspections run in this worktree so the user's main checkout is
-  // never touched. Falls back to goal.cwd if not in a git repo or worktree
-  // creation fails (warning logged in either case).
-  if (!goal.worktreePath) {
-    const worktree = ensureWorktree(goal.cwd, goal.id, goal.branchName);
-    if (worktree) {
-      goal.worktreePath = worktree;
-      store.updateGoal(goal.id, { worktreePath: worktree });
-    }
+/**
+ * Run the goal loop on the PRD at prdPath. Loops until every story passes or
+ * maxIterations is hit. Writes prd.json back after each iteration so re-runs
+ * pick up where they left off (this IS the pause/resume mechanism).
+ *
+ * Returns aggregate tokens used and whether the goal completed.
+ */
+export async function runGoalLoop(opts: LoopOptions): Promise<LoopResult> {
+  const {
+    prdPath,
+    cwd,
+    branchName: branchOverride,
+    maxIterations = DEFAULT_MAX_ITERATIONS,
+    subAgentTimeoutMs = 300_000,
+  } = opts;
+
+  const totalTokens = emptyTokens();
+
+  // Load + validate PRD once at start. We don't reload on every iteration —
+  // we hold the in-memory PRD and atomically persist updates back to disk.
+  // If the user edits prd.json mid-loop, those edits are lost on next save
+  // (acceptable: ctrl+C the loop if you want to hand-edit).
+  const loaded = loadPRD(prdPath);
+  if ("error" in loaded) {
+    return { completed: false, iterationsRun: 0, totalTokens, reason: loaded.error };
+  }
+  const prd = loaded;
+
+  const branchName = branchOverride || prd.branchName;
+  // Goal-id key for the worktree dir. Reuse a stable slug derived from PRD
+  // path + branchName so repeated /goal --from <same path> with the same
+  // branch reuses the same worktree (resume path).
+  const worktreeKey = `${prd.project.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30)}-${branchName.replace(/[^a-zA-Z0-9]+/g, "-")}`.replace(/^-+|-+$/g, "");
+
+  const wt = ensureWorktree(cwd, worktreeKey, branchName);
+  const workCwd = wt ?? cwd;
+  if (!wt) {
+    console.warn(`[goals] running without worktree isolation in ${cwd} — branch / git issue surfaced above`);
   }
 
-  while (goal.currentIteration < goal.maxIterations) {
-    goal.currentIteration++;
-    store.updateGoal(goal.id, { currentIteration: goal.currentIteration });
-
-    // --- Check pause state (issue #10 fix) ---
-    const currentGoal = store.getGoal(goal.id);
-    if (currentGoal && currentGoal.state === "paused") {
-      return {
-        goalId: goal.id,
-        completed: false,
-        finalState: "paused",
-        iterationsRun: goal.currentIteration,
-        reason: "Goal paused by user",
-      };
-    }
-
-    // --- Select next story ---
-    let story: UserStory | null = null;
-    if (goal.userStories) {
-      story = goal.userStories.find((s) => !s.passes) || null;
-    } else if (goal.prdFile) {
-      story = store.getNextStory(goal.id);
-    }
-
+  let iter = 0;
+  while (iter < maxIterations) {
+    const story = prd.userStories.find((s) => !s.passes);
     if (!story) {
-      // No more stories — goal complete
-      store.transitionTo(goal.id, "completed");
-      return {
-        goalId: goal.id,
-        completed: true,
-        finalState: "completed",
-        iterationsRun: goal.currentIteration,
-      };
+      return { completed: true, iterationsRun: iter, totalTokens };
     }
 
-    const iterationStartedAt = new Date().toISOString();
-    let executionOutput = "";
-    let changedFiles: string[] = [];
-    let verificationResult: { passes: boolean; evidence: Record<string, string>; incompleteReasons: string[]; tokens?: PiTokens } | null = null;
-    let executionTokens: PiTokens | undefined;
+    iter++;
+    const startedAt = new Date().toISOString();
+    console.log(`\n[goals] iter ${iter}/${maxIterations} — story ${story.id}: ${story.title}`);
 
-    // --- Execution ---
+    let exec: StoryExecutionResult;
     try {
-      const execResult = await executeStory(goal, story, config);
-      executionOutput = execResult.output;
-      changedFiles = execResult.changedFiles;
-      executionTokens = execResult.tokens;
+      exec = await executeStory(prdPath, workCwd, story, subAgentTimeoutMs);
     } catch (err) {
-      console.error(`[goals] Execution failed for ${story.id}:`, err);
+      console.error(`[goals] execution crashed for ${story.id}:`, err);
+      appendProgress(workCwd, `## Iteration ${iter} - ${story.id}\n❌ EXECUTION CRASHED\nError: ${String(err)}\n`);
+      continue;
+    }
+    addTokens(totalTokens, exec.tokens);
+    if (exec.tokens) {
+      console.log(`[goals]   exec  tokens: ${exec.tokens.totalTokens} ($${exec.tokens.costUsd.toFixed(4)})`);
     }
 
-    // --- Token budget accounting ---
-    // Real per-call usage from pi's agent_end event (via spawn-pi).
-    // If pi crashed mid-call (no agent_end), tokens is undefined → we add 0
-    // and continue. Budget enforcement still works on subsequent successful calls.
-    if (executionTokens) {
-      goal.tokensUsed += executionTokens.totalTokens;
-      goal.costUsd = (goal.costUsd ?? 0) + executionTokens.costUsd;
-      store.updateGoal(goal.id, { tokensUsed: goal.tokensUsed, costUsd: goal.costUsd });
-    }
-
-    // --- Check budget before proceeding to verification ---
-    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
-      store.transitionTo(goal.id, "budget_limited");
-      return {
-        goalId: goal.id,
-        completed: false,
-        finalState: "budget_limited",
-        iterationsRun: goal.currentIteration,
-        reason: `Token budget exhausted (used ${goal.tokensUsed} of ${goal.tokenBudget})`,
-      };
-    }
-
-    // --- Verification (isolated sub-agent) ---
-    // Issue #5 fix: If changedFiles is empty (git diff returned nothing),
-    // verification is impossible — skip and mark failed.
-    if (changedFiles.length === 0) {
-      verificationResult = {
+    let verify: VerificationOutcome;
+    if (exec.changedFiles.length === 0) {
+      verify = {
         passes: false,
         evidence: { noFilesFound: "No changed files detected via git diff" },
-        incompleteReasons: ["No changed files found — story may not have been implemented"],
+        incompleteReasons: ["No changed files — story may not have been implemented"],
       };
     } else {
       try {
-        verificationResult = await verifyStory(goal, story, changedFiles, config);
+        verify = await verifyStory(workCwd, story, exec.changedFiles, subAgentTimeoutMs);
       } catch (err) {
-        console.error(`[goals] Verification failed for ${story.id}:`, err);
-        verificationResult = {
+        console.error(`[goals] verification crashed for ${story.id}:`, err);
+        verify = {
           passes: false,
           evidence: { error: String(err) },
           incompleteReasons: ["Verification sub-agent crashed"],
         };
       }
     }
-
-    // --- Accumulate verification tokens too ---
-    if (verificationResult?.tokens) {
-      goal.tokensUsed += verificationResult.tokens.totalTokens;
-      goal.costUsd = (goal.costUsd ?? 0) + verificationResult.tokens.costUsd;
-      store.updateGoal(goal.id, { tokensUsed: goal.tokensUsed, costUsd: goal.costUsd });
+    addTokens(totalTokens, verify.tokens);
+    if (verify.tokens) {
+      console.log(`[goals]   verify tokens: ${verify.tokens.totalTokens} ($${verify.tokens.costUsd.toFixed(4)})`);
     }
 
-    // --- Re-check budget after verification (allow this iteration to finish, halt next) ---
-    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
-      store.transitionTo(goal.id, "budget_limited");
-      // Don't return yet — fall through to log iteration outcome, then halt below
-    }
+    // Mutate PRD in-memory + persist atomically.
+    story.passes = verify.passes;
+    savePRD(prdPath, prd);
 
-    // --- Update PRD / Store ---
-    const passes = verificationResult?.passes ?? false;
-    if (goal.userStories) {
-      const storyIndex = goal.userStories.findIndex((s) => s.id === story!.id);
-      if (storyIndex !== -1) {
-        goal.userStories[storyIndex].passes = passes;
-      }
-    }
-    store.updateStoryPasses(goal.id, story.id, passes);
-
-    // --- Log iteration ---
-    const logEntry = {
-      goalId: goal.id,
-      iteration: goal.currentIteration,
-      storyId: story.id,
-      startedAt: iterationStartedAt,
-      completedAt: new Date().toISOString(),
-      executionOutput: executionOutput.slice(0, 5000),
-      verificationResult: verificationResult ?? undefined,
-      changedFiles,
-    };
-    store.insertIteration(logEntry);
-
-    // Write episodic log
-    const episodicLogPath = join(episodicDir, `iteration-${String(goal.currentIteration).padStart(3, "0")}.jsonl`);
-    writeFileSync(episodicLogPath, JSON.stringify(logEntry) + "\n");
-
-    // Append progress (goal-specific + global)
-    const progressEntry = `
-## Iteration ${goal.currentIteration} - ${story.id}
-${passes ? "✅ PASSED" : "❌ FAILED"}
-${!passes && verificationResult ? `Reason: ${verificationResult.incompleteReasons.join(", ")}` : ""}
-${!passes && verificationResult ? `Evidence: ${JSON.stringify(verificationResult.evidence)}` : ""}
-`;
-    appendProgress(goal, progressEntry);
-
-    // --- Check completion ---
-    const allComplete = goal.userStories
-      ? goal.userStories.every((s) => s.passes)
-      : store.allStoriesComplete(goal.id);
-
-    if (allComplete) {
-      store.transitionTo(goal.id, "completed");
-      return {
-        goalId: goal.id,
-        completed: true,
-        finalState: "completed",
-        iterationsRun: goal.currentIteration,
-      };
-    }
-
-    // --- Halt if budget was hit during verification (deferred from earlier check) ---
-    if (goal.tokenBudget && goal.tokensUsed >= goal.tokenBudget) {
-      return {
-        goalId: goal.id,
-        completed: false,
-        finalState: "budget_limited",
-        iterationsRun: goal.currentIteration,
-        reason: `Token budget exhausted (used ${goal.tokensUsed} of ${goal.tokenBudget})`,
-      };
-    }
-
-    // --- Check pause state (before next iteration, issue #10 fix) ---
-    const recheckGoal = store.getGoal(goal.id);
-    if (recheckGoal && recheckGoal.state === "paused") {
-      return {
-        goalId: goal.id,
-        completed: false,
-        finalState: "paused",
-        iterationsRun: goal.currentIteration,
-        reason: "Goal paused by user during iteration",
-      };
-    }
+    const completedAt = new Date().toISOString();
+    appendProgress(workCwd, [
+      `## Iteration ${iter} - ${story.id}`,
+      `${verify.passes ? "✅ PASSED" : "❌ FAILED"}`,
+      verify.passes ? "" : `Reason: ${verify.incompleteReasons.join(", ")}`,
+      verify.passes ? "" : `Evidence: ${JSON.stringify(verify.evidence).slice(0, 500)}`,
+      `Changed: ${exec.changedFiles.join(", ") || "none"}`,
+      `Started: ${startedAt}  Done: ${completedAt}`,
+    ].filter(Boolean).join("\n"));
   }
 
-  // Max iterations reached. NOT a "failed" state — nothing crashed, the loop
-  // simply ran out of rounds. Distinct terminal so users see "I should bump
-  // maxIterations and /goal --resume" instead of "implementation is broken".
-  store.transitionTo(goal.id, "iteration_limited");
+  // Fell out of the while — check one more time whether the LAST iteration
+  // happened to be the one that flipped the last story (in which case we're
+  // actually completed, not halted by the iteration cap).
+  if (!prd.userStories.find((s) => !s.passes)) {
+    return { completed: true, iterationsRun: iter, totalTokens };
+  }
+
   return {
-    goalId: goal.id,
     completed: false,
-    finalState: "iteration_limited",
-    iterationsRun: goal.currentIteration,
-    reason: `Max iterations (${goal.maxIterations}) reached with stories still incomplete. Resume after bumping maxIterations to continue.`,
+    iterationsRun: iter,
+    totalTokens,
+    reason: `Max iterations (${maxIterations}) reached with stories still incomplete. Re-run /goal --from ${prdPath} to continue.`,
   };
 }

@@ -50,7 +50,7 @@ npx tsc -w -p packages/ralph
 |---|---|---|
 | `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]), `remember_this` / `recall_memory` / `observe` / `forget_memory` tools, worth-remembering-llm auto-capture at agent_end. |
 | `skill-evolution` | `packages/core/extensions/skill-evolution/` | `write_skill` tool — agent edits `.pi/skills/<name>/SKILL.md` directly with `.bak.<ts>` backups. Backs the `define-skill` / `revise-skill` skills. |
-| `goals` | `packages/ralph/extensions/goals/` | `goal` / `update_goal` / `list_goals` / `get_goal` **tools** (not slash commands). Ralph loop with worktree isolation. |
+| `goals` | `packages/ralph/extensions/goals/` | Single `goal` **tool** (not slash command). `--from prd.json` required. Per-PRD git worktree isolation. State lives in `prd.json`; resume by re-running same command. |
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `understand-image` | `packages/toolkit/extensions/understand-image/` | `understand_image` tool — base64 + URL + path; auto-saves base64 attachments to temp files. mmx vision backend. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |
@@ -85,15 +85,13 @@ All shared state lives under three roots, all resolvable from any cwd in the rep
 ├── knowledge/*.md              compiled facts (frontmatter-tagged)
 └── graph/                      KG managed from frontmatter triples
 
-.pi-goals/                      # $PI_GOALS_DIR — goal state machine
-├── goals.db                    SQLite
-├── progress.txt                append-only learnings
-├── prd.json                    current PRD (when using --from)
-├── episodic/ralph/             per-iteration JSONL logs
-└── .locks/                     proper-lockfile coordination
+.pi-goals/                      # $PI_GOALS_DIR — reserved for future ralph state
+                                  (0.5.0 ralph is stateless here — state lives in
+                                  the user's prd.json + per-worktree progress)
 
-.ralph-worktrees/               per-goal git worktrees (ralph 0.4.0+)
-└── goal-<id>/                  isolated checkout on goal's branch
+.ralph-worktrees/               per-PRD git worktrees (ralph 0.4.0+)
+└── <project>-<branch>/         isolated checkout for one goal
+    └── ralph-progress.txt      append-only iteration log (per worktree)
 ```
 
 **Path resolution** uses `git rev-parse --git-common-dir` (see `packages/utils/src/paths.ts`) — both `.pi-mind/` and `.pi-goals/` always point to the **main repo root** even when called from a linked worktree. `$PI_MIND_DIR` / `$PI_GOALS_DIR` env vars override.
@@ -126,11 +124,9 @@ Content here.
 | `packages/core/extensions/memory/index.ts` | Memory extension entry; worth-remembering-llm, remember_this. |
 | `packages/core/extensions/memory/core.ts` | Hybrid retrieval pipeline (vector + FTS5 + KG + links). |
 | `packages/core/extensions/memory/knowledge-graph.ts` | KG storage + entity-fact queries. |
-| `packages/ralph/extensions/goals/index.ts` | `goal` tool + sibling management tools. |
-| `packages/ralph/extensions/goals/loop.ts` | Execution + verification loop; `ensureWorktree`. |
-| `packages/ralph/extensions/goals/store.ts` | SQLite-backed goal persistence. |
-| `packages/ralph/extensions/goals/schema.ts` | Goal / UserStory / VerificationResult types. |
-| `packages/ralph/extensions/goals/mutex.ts` | Reentrant file lock. |
+| `packages/ralph/extensions/goals/index.ts` | Single `goal` tool registration (~50 lines). |
+| `packages/ralph/extensions/goals/loop.ts` | Execution + verification loop; `ensureWorktree`; `loadPRD` / `savePRD`. |
+| `packages/ralph/extensions/goals/schema.ts` | PRD / UserStory / VerificationResult types + tool allowlist constants. |
 | `packages/toolkit/extensions/mcp-bridge/mcp-client.ts` | MCP stdio JSON-RPC client. |
 
 ## Architecture Notes
@@ -144,26 +140,35 @@ Three layers, retrievable as a single hybrid context (Ollama `nomic-embed-text` 
 
 See [[memory-write-impl-notes]] for runtime details + corner cases.
 
-### Goals (Ralph)
+### Goals (Ralph) — 0.5.0 simplified
 
 ```
-goal tool invocation
+goal --from prd.json
     ↓
-ensureWorktree(cwd, goalId, branchName) → <repo>/.ralph-worktrees/<id>/
+loadPRD(path) → schema-validate
     ↓
-loop, each iteration:
-    Execution sub-pi  ← spawned via spawnPi, --no-extensions, --tools allowlist
+ensureWorktree(cwd, key, prd.branchName) → <repo>/.ralph-worktrees/<project>-<branch>/
+    ↓
+loop until all stories pass or maxIterations:
+    story = prd.userStories.find(!passes)
+    Execution sub-pi  ← spawnPi, --no-extensions, --tools bash,read,write,edit
         cwd = worktreePath           ← user's main checkout never touched
-        ↓ implements one story
-    Verification sub-pi ← separate pi process, restricted allowlist
+        ↓ implements ONE story
+    Verification sub-pi ← separate pi process, --tools bash,read (read-only)
         cwd = worktreePath
         ↓ returns { passes: bool, evidence, reasons } — schema-validated
-    Persist outcome, append progress, check budget/pause/iteration
+    story.passes = verify.passes  (mutate in-memory PRD)
+    savePRD(path, prd)            (atomic rename, prd.json IS the state)
+    append <worktree>/ralph-progress.txt
 ```
 
-Sub-agents run with `--no-extensions` so they **cannot** load pi-mind or any other extension — they're locked to built-in pi tools only. Verification is a separate pi process with a stricter `--tools` allowlist (no Write/Edit).
+**State lives in prd.json.** No DB, no state machine. Pause = `Ctrl+C`. Resume = re-run `goal --from prd.json` — loop picks up at the next `passes:false` story. Multi-goal management = `ls .ralph-worktrees/`, `cat prd.json`.
 
-Memory + `.pi-goals/` resolve to the main repo root regardless of worktree (via git-common-dir). After a goal finishes, the worktree survives — clean up with `git worktree remove .ralph-worktrees/<id>` once reviewed.
+Sub-agents run with `--no-extensions` — they **cannot** load any pi extension, locked to built-in tools only. Verification uses a strict read-only allowlist (no `write`/`edit`) so it cannot tamper with what it's checking.
+
+Memory + `.pi-goals/` resolve to the main repo root regardless of worktree (via `git-common-dir`). After a goal finishes the worktree survives for review — clean up with `git worktree remove .ralph-worktrees/<key>`.
+
+History: 0.4.0 added worktree isolation. 0.5.0 stripped the over-engineering (SQLite DB, 7-state machine, `update_goal`/`list_goals`/`get_goal` tools, tokenBudget enforcement, pause/resume state machine, `pi-goals-config.json` loader, global progress.txt). Net ~1000 → ~500 LoC; ralph is now the smallest valuable thing that does the job. See packages/ralph/README.md "What changed from 0.4.0" for the breaking-changes list.
 
 ### Subprocess discipline
 

@@ -1,129 +1,112 @@
 /**
- * Tests for pi-goals schema (lib/schema.ts).
- * Schema objects are for pi-coding-agent's internal use (type validation),
- * not for manual .parse() calls. Tests verify structure and defaults.
+ * Tests for the simplified pi-goals schema.
  */
 import { describe, expect, it } from "vitest";
+import { Value } from "@sinclair/typebox/value";
 import {
-  DEFAULT_CONFIG,
+  PRDSchema, UserStorySchema, VerificationResultSchema,
+  EXECUTION_TOOLS, VERIFICATION_TOOLS, DEFAULT_MAX_ITERATIONS,
 } from "../extensions/goals/schema.js";
 
-describe("DEFAULT_CONFIG", () => {
-  it("has expected defaults", () => {
-    expect(DEFAULT_CONFIG.defaultMaxIterations).toBe(10);
-    expect(DEFAULT_CONFIG.verificationTools).toContain("Bash");
-    expect(DEFAULT_CONFIG.verificationTools).toContain("Read");
-    expect(DEFAULT_CONFIG.verificationTools).toContain("Grep");
-    expect(DEFAULT_CONFIG.verificationTools).toContain("Find");
+describe("UserStorySchema", () => {
+  it("requires id, title, description, acceptanceCriteria, priority", () => {
+    const valid = {
+      id: "US-001", title: "x", description: "y",
+      acceptanceCriteria: ["a"], priority: 1, passes: false, notes: "",
+    };
+    expect(Value.Check(UserStorySchema, valid)).toBe(true);
   });
 
-  it("execution tools are built-in pi tools (no spawn_subagent — sub-agents run with --no-extensions)", () => {
-    expect(DEFAULT_CONFIG.executionTools).toContain("Bash");
-    expect(DEFAULT_CONFIG.executionTools).toContain("Read");
-    expect(DEFAULT_CONFIG.executionTools).toContain("Write");
-    expect(DEFAULT_CONFIG.executionTools).toContain("Edit");
-    // spawn_subagent is NOT available in sub-agents since they use --no-extensions
-    expect(DEFAULT_CONFIG.executionTools).not.toContain("spawn_subagent");
-  });
-
-  it("verification tools exclude write/edit", () => {
-    expect(DEFAULT_CONFIG.verificationTools).not.toContain("Write");
-    expect(DEFAULT_CONFIG.verificationTools).not.toContain("Edit");
-    expect(DEFAULT_CONFIG.verificationTools).not.toContain("spawn_subagent");
-  });
-});
-
-describe("schema exports", () => {
-  it("exports GoalState schema", async () => {
-    const { GoalState } = await import("../extensions/goals/schema.js");
-    expect(GoalState).toBeDefined();
-    expect((GoalState as any).anyOf).toBeDefined(); // Union stores variants in anyOf
-  });
-
-  it("exports UserStorySchema", async () => {
-    const { UserStorySchema } = await import("../extensions/goals/schema.js");
-    expect(UserStorySchema).toBeDefined();
-    expect(UserStorySchema.type).toBe("object");
-  });
-
-  it("exports GoalSchema", async () => {
-    const { GoalSchema } = await import("../extensions/goals/schema.js");
-    expect(GoalSchema).toBeDefined();
-    expect(GoalSchema.type).toBe("object");
-  });
-
-  it("exports PRDDBSchema", async () => {
-    const { PRDDBSchema } = await import("../extensions/goals/schema.js");
-    expect(PRDDBSchema).toBeDefined();
-    expect(PRDDBSchema.type).toBe("object");
-  });
-});
-
-describe("GoalState union values", () => {
-  it("GoalState has 7 variants", async () => {
-    const { GoalState } = await import("../extensions/goals/schema.js");
-    // TypeBox Union stores variants in anyOf array
-    const variants = (GoalState as any).anyOf;
-    expect(variants).toHaveLength(7);
-  });
-
-  it("GoalState variants match expected states", async () => {
-    const { GoalState } = await import("../extensions/goals/schema.js");
-    const variants = (GoalState as any).anyOf;
-    // "iteration_limited" is distinct from "failed": loop ran out of
-    // rounds with stories still incomplete, but nothing crashed.
-    const expected = ["created", "active", "paused", "completed", "failed", "budget_limited", "iteration_limited"];
-    const actual = variants.map((v: any) => v.const);
-    expect(actual.sort()).toEqual(expected.sort());
-  });
-});
-
-describe("UserStorySchema properties", () => {
-  it("has required id, title, description, priority", async () => {
-    const { UserStorySchema } = await import("../extensions/goals/schema.js");
-    const props = (UserStorySchema as any).properties;
-    expect(props.id).toBeDefined();
-    expect(props.title).toBeDefined();
-    expect(props.description).toBeDefined();
-    expect(props.priority).toBeDefined();
-  });
-
-  it("has optional passes and notes with defaults", async () => {
-    const { UserStorySchema } = await import("../extensions/goals/schema.js");
-    const props = (UserStorySchema as any).properties;
-    expect(props.passes.default).toBe(false);
-    expect(props.notes.default).toBe("");
-  });
-
-  it("acceptanceCriteria is array of strings", async () => {
-    const { UserStorySchema } = await import("../extensions/goals/schema.js");
+  it("acceptanceCriteria must be array of strings", () => {
     const props = (UserStorySchema as any).properties;
     expect(props.acceptanceCriteria.type).toBe("array");
     expect(props.acceptanceCriteria.items.type).toBe("string");
   });
+
+  it("passes defaults to false, notes to empty", () => {
+    const props = (UserStorySchema as any).properties;
+    expect(props.passes.default).toBe(false);
+    expect(props.notes.default).toBe("");
+  });
 });
 
-describe("GoalSchema properties", () => {
-  it("has required id, state, objective, branchName, cwd", async () => {
-    const { GoalSchema } = await import("../extensions/goals/schema.js");
-    const props = (GoalSchema as any).properties;
-    expect(props.id).toBeDefined();
-    expect(props.state).toBeDefined();
-    expect(props.objective).toBeDefined();
-    expect(props.branchName).toBeDefined();
-    expect(props.cwd).toBeDefined();
+describe("PRDSchema", () => {
+  it("accepts a well-formed PRD", () => {
+    const prd = {
+      project: "test",
+      branchName: "ralph/test",
+      description: "test prd",
+      userStories: [{
+        id: "US-001", title: "x", description: "y",
+        acceptanceCriteria: ["a"], priority: 1, passes: false, notes: "",
+      }],
+    };
+    expect(Value.Check(PRDSchema, prd)).toBe(true);
   });
 
-  it("has tokensUsed with default 0", async () => {
-    const { GoalSchema } = await import("../extensions/goals/schema.js");
-    const props = (GoalSchema as any).properties;
-    expect(props.tokensUsed.default).toBe(0);
+  it("rejects missing userStories", () => {
+    const prd = { project: "x", branchName: "b", description: "d" };
+    expect(Value.Check(PRDSchema, prd)).toBe(false);
   });
 
-  it("has optional userStories array", async () => {
-    const { GoalSchema } = await import("../extensions/goals/schema.js");
-    const props = (GoalSchema as any).properties;
-    expect(props.userStories.type).toBe("array");
-    expect(props.userStories.items).toBeDefined();
+  it("rejects story missing acceptanceCriteria", () => {
+    const prd = {
+      project: "x", branchName: "b", description: "d",
+      userStories: [{ id: "1", title: "t", description: "d", priority: 1, passes: false, notes: "" }],
+    };
+    expect(Value.Check(PRDSchema, prd)).toBe(false);
+  });
+});
+
+describe("VerificationResultSchema", () => {
+  it("requires passes: boolean", () => {
+    expect(Value.Check(VerificationResultSchema, { passes: true })).toBe(true);
+    expect(Value.Check(VerificationResultSchema, { passes: "yes" })).toBe(false);
+    expect(Value.Check(VerificationResultSchema, { passes: null })).toBe(false);
+    expect(Value.Check(VerificationResultSchema, { pass: true })).toBe(false);
+  });
+
+  it("evidence is optional record of strings", () => {
+    expect(Value.Check(VerificationResultSchema, {
+      passes: true, evidence: { c1: "found it" },
+    })).toBe(true);
+  });
+
+  it("rejects evidence values that aren't strings", () => {
+    expect(Value.Check(VerificationResultSchema, {
+      passes: true, evidence: { c1: 42 },
+    })).toBe(false);
+  });
+
+  it("incompleteReasons is optional array of strings", () => {
+    expect(Value.Check(VerificationResultSchema, {
+      passes: false, incompleteReasons: ["reason a", "reason b"],
+    })).toBe(true);
+  });
+});
+
+describe("tool allowlists", () => {
+  it("EXECUTION_TOOLS has write/edit; VERIFICATION_TOOLS does not", () => {
+    expect(EXECUTION_TOOLS).toContain("bash");
+    expect(EXECUTION_TOOLS).toContain("read");
+    expect(EXECUTION_TOOLS).toContain("write");
+    expect(EXECUTION_TOOLS).toContain("edit");
+    expect(VERIFICATION_TOOLS).toContain("bash");
+    expect(VERIFICATION_TOOLS).toContain("read");
+    expect(VERIFICATION_TOOLS).not.toContain("write");
+    expect(VERIFICATION_TOOLS).not.toContain("edit");
+  });
+
+  it("tool names are all lowercase (pi tool registry is case-sensitive)", () => {
+    for (const t of [...EXECUTION_TOOLS, ...VERIFICATION_TOOLS]) {
+      expect(t).toBe(t.toLowerCase());
+    }
+  });
+});
+
+describe("constants", () => {
+  it("DEFAULT_MAX_ITERATIONS is sane", () => {
+    expect(DEFAULT_MAX_ITERATIONS).toBeGreaterThan(0);
+    expect(DEFAULT_MAX_ITERATIONS).toBeLessThan(100);
   });
 });

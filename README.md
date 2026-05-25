@@ -11,7 +11,7 @@ Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), 
 Drop-in extensions the LLM calls at runtime: **web_search** + **understand_image** (via mmx CLI — fill MiniMax's missing search/vision capabilities), **mcp-bridge** (proxy any MCP server as pi tools), **subagent** (spawn focused child pi processes).
 
 ### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
-Ralph-style execution with a state machine: pick story → execution sub-agent → verification sub-agent → repeat. Real token-budget enforcement, per-goal git-worktree isolation (`<repo>/.ralph-worktrees/<id>/`), SQLite-backed goal state.
+Ralph-style execution: pick story → execution sub-agent → isolated verification sub-agent → repeat. State lives in `prd.json` (no DB). Per-PRD git-worktree isolation (`<repo>/.ralph-worktrees/<key>/`). Single `goal` tool. Resume = re-run same command. Real token reporting per iteration.
 
 ### [`@shog-lab/pi-utils`](packages/utils/) — internal infrastructure
 Shared by the above: `spawnPi()` (programmatic pi spawn with `--mode json` + token extraction) and `resolvePiMindDir()` (repo-rooted `.pi-mind` path that survives git worktree teardown). Not loaded as a pi extension.
@@ -44,7 +44,7 @@ git clone https://github.com/shog-lab/pi-mind.git
 cd pi-mind
 npm install   # installs all workspaces + runs each postinstall → .pi/ symlinks
 npm run build
-npm test      # 182 tests across all packages
+npm test      # 162 tests across all packages
 ```
 
 Per-package:
