@@ -15,3 +15,9 @@ node_modules/
 .pi/
 .pi-mind/
 .pi-goals/
+.ralph-worktrees/
+
+# Local editor / AI-assistant configs (per-developer, not project state)
+.claude/
+.cursor/
+.vscode/
