@@ -12,6 +12,7 @@ Guide for AI agents working in this repository.
 | `packages/core` | `@shog-lab/pi-mind-core` | published | Persistent memory + skill self-evolution. Layers: raw, knowledge, KG. |
 | `packages/toolkit` | `@shog-lab/pi-toolkit` | published | Common pi extensions: web search, image understanding, MCP server bridge, sub-agent spawn. |
 | `packages/ralph` | `@shog-lab/pi-goals` | published | Ralph-style autonomous goal execution with PRD loop + worktree isolation. |
+| `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
 | `packages/eval` | `@shog-lab/pi-eval` | **not published** (internal) | Benchmark harness (LongMemEval driver for now). |
 
 Publishing is **manual per-package**, no CI — see [[publish-flow]] memory.
@@ -55,6 +56,7 @@ npx tsc -w -p packages/ralph
 | `understand-image` | `packages/toolkit/extensions/understand-image/` | `understand_image` tool — base64 + URL + path; auto-saves base64 attachments to temp files. mmx vision backend. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |
 | `subagent` | `packages/toolkit/extensions/subagent/` | `spawn_subagent` tool — fire-and-forget child pi via `spawnPi`. |
+| `bus` | `packages/bus/extensions/bus/` | `agent_list` / `agent_send` / `agent_inbox` — peer-to-peer messaging between pi sessions in same repo. Push-trigger via `pi.sendUserMessage(..., { deliverAs: "followUp" })`. |
 
 Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.
 

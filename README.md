@@ -13,6 +13,9 @@ Drop-in extensions the LLM calls at runtime: **web_search** + **understand_image
 ### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
 Ralph-style execution: pick story → execution sub-agent → isolated verification sub-agent → repeat. State lives in `prd.json` (no DB). Per-PRD git-worktree isolation (`<repo>/.ralph-worktrees/<key>/`). Single `goal` tool. Resume = re-run same command. Real token reporting per iteration.
 
+### [`@shog-lab/pi-bus`](packages/bus/) — inter-pi messaging primitive
+Atomic peer-to-peer messaging for pi sessions: open multiple pi windows in the same repo, they auto-join a shared bus. 3 tools (`agent_list` / `agent_send` / `agent_inbox`). Incoming messages auto-trigger the recipient's agent via `pi.sendUserMessage` — even when it's idle waiting for user input. Per-repo scoped, fire-and-forget, no orchestration.
+
 ### [`@shog-lab/pi-utils`](packages/utils/) — internal infrastructure
 Shared by the above: `spawnPi()` (programmatic pi spawn with `--mode json` + token extraction) and `resolvePiMindDir()` (repo-rooted `.pi-mind` path that survives git worktree teardown). Not loaded as a pi extension.
 
@@ -44,7 +47,7 @@ git clone https://github.com/shog-lab/pi-mind.git
 cd pi-mind
 npm install   # installs all workspaces + runs each postinstall → .pi/ symlinks
 npm run build
-npm test      # 162 tests across all packages
+npm test      # 168 tests across all packages
 ```
 
 Per-package:
