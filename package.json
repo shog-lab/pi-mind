@@ -11,6 +11,7 @@
     "packages/toolkit",
     "packages/ralph",
     "packages/bus",
+    "packages/subagent",
     "packages/eval"
   ],
   "scripts": {

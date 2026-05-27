@@ -1,19 +1,20 @@
 /**
- * pi-toolkit Sub-Agent Extension
+ * pi-subagent Extension
  *
- * Provides spawn_subagent tool for an agent to spawn a focused sub-agent in a
- * target directory. Sub-agents have minimal context: no memory access, no parent
- * skills, no system prompt — just the task plus web_search (when installed
- * alongside in toolkit).
+ * Provides `spawn_subagent` tool — agent calls with cwd + prompt, gets a fresh
+ * child pi process's response back. Sub-agents run with --no-extensions (no
+ * memory, no other extensions, no system prompt) — clean slate that only sees
+ * the prompt.
  *
- * Lives in pi-toolkit (not pi-mind) because it's an agent-facing tool with no
- * memory dependency — it just wraps spawnPi from pi-utils. Pi-mind has its own
- * internal L2 spawn helper for memory-specific use cases.
+ * Wraps spawnPi from @shog-lab/pi-utils.
  *
  * Use cases:
  *   - Run tests / read code in an isolated context
  *   - Generate a SKILL.md from raw observations
  *   - Classify content without bias from the parent agent's loaded context
+ *
+ * History: extracted from @shog-lab/pi-toolkit 0.2.x as a separate package
+ * in toolkit 0.3.0 (BREAKING: install @shog-lab/pi-subagent to keep this tool).
  */
 
 import { existsSync, realpathSync } from "node:fs";

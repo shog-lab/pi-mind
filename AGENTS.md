@@ -10,9 +10,10 @@ Guide for AI agents working in this repository.
 |---|---|---|---|
 | `packages/utils` | `@shog-lab/pi-utils` | published | Shared infra: `spawnPi`, `resolvePiMindDir`. Depended on by every other workspace. |
 | `packages/core` | `@shog-lab/pi-mind-core` | published | Persistent memory + skill self-evolution. Layers: raw, knowledge, KG. |
-| `packages/toolkit` | `@shog-lab/pi-toolkit` | published | Common pi extensions: web search, image understanding, MCP server bridge, sub-agent spawn. |
+| `packages/toolkit` | `@shog-lab/pi-toolkit` | published | Common pi extensions: web search, image understanding, MCP server bridge. (0.3.0 removed `spawn_subagent` — see pi-subagent.) |
 | `packages/ralph` | `@shog-lab/pi-goals` | published | Ralph-style autonomous goal execution with PRD loop + worktree isolation. |
 | `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
+| `packages/subagent` | `@shog-lab/pi-subagent` | published | Single `spawn_subagent` tool — fire-and-forget child pi via spawnPi. Extracted from pi-toolkit 0.3.0. |
 | `packages/eval` | `@shog-lab/pi-eval` | **not published** (internal) | Benchmark harness (LongMemEval driver for now). |
 
 Publishing is **manual per-package**, no CI — see [[publish-flow]] memory.
@@ -55,7 +56,7 @@ npx tsc -w -p packages/ralph
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `understand-image` | `packages/toolkit/extensions/understand-image/` | `understand_image` tool — base64 + URL + path; auto-saves base64 attachments to temp files. mmx vision backend. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |
-| `subagent` | `packages/toolkit/extensions/subagent/` | `spawn_subagent` tool — fire-and-forget child pi via `spawnPi`. |
+| `subagent` | `packages/subagent/extensions/subagent/` | `spawn_subagent` tool — fire-and-forget child pi via `spawnPi`. (Moved from pi-toolkit in toolkit 0.3.0.) |
 | `bus` | `packages/bus/extensions/bus/` | `agent_list` / `agent_send` / `agent_inbox` — peer-to-peer messaging between pi sessions in same repo. Push-trigger via `pi.sendUserMessage(..., { deliverAs: "followUp" })`. |
 
 Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.

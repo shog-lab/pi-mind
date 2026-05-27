@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import subagentExtension from "./index.js";
+import subagentExtension from "../extensions/subagent/index.js";
 
 interface RegisteredTool {
   name: string;

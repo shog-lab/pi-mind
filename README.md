@@ -8,7 +8,10 @@ Self-evolving agent platform built on top of [pi-coding-agent](https://github.co
 Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), **knowledge/** (compiled facts as markdown), **graph/** (entity-relationship triples). FTS5 + vector + KG retrieval. Daily-audit loop, subject classification, schema linting.
 
 ### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
-Drop-in extensions the LLM calls at runtime: **web_search** + **understand_image** (via mmx CLI — fill MiniMax's missing search/vision capabilities), **mcp-bridge** (proxy any MCP server as pi tools), **subagent** (spawn focused child pi processes).
+Drop-in extensions the LLM calls at runtime: **web_search** + **understand_image** (via mmx CLI — fill MiniMax's missing search/vision capabilities), **mcp-bridge** (proxy any MCP server as pi tools). _0.3.0 removed `spawn_subagent` — see pi-subagent below._
+
+### [`@shog-lab/pi-subagent`](packages/subagent/) — child-pi spawning primitive
+Single `spawn_subagent` tool: agent passes `cwd` + `prompt`, gets back a clean child pi's response. Extracted from pi-toolkit in toolkit 0.3.0 because it's infrastructure (process spawning), not a leaf tool. Used by ralph and any custom agent flow that needs sub-pi work.
 
 ### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
 Ralph-style execution: pick story → execution sub-agent → isolated verification sub-agent → repeat. State lives in `prd.json` (no DB). Per-PRD git-worktree isolation (`<repo>/.ralph-worktrees/<key>/`). Single `goal` tool. Resume = re-run same command. Real token reporting per iteration.
@@ -47,7 +50,7 @@ git clone https://github.com/shog-lab/pi-mind.git
 cd pi-mind
 npm install   # installs all workspaces + runs each postinstall → .pi/ symlinks
 npm run build
-npm test      # 168 tests across all packages
+npm test      # 168 tests across all packages (21 + 115 + 6 + 13 + 6 + 4 + 3)
 ```
 
 Per-package:

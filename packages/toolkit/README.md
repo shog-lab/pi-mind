@@ -11,7 +11,10 @@ A drop-in package adding several commonly-used external tool integrations to any
 | `web-search` | `web_search` | mmx CLI | (mmx config) |
 | `understand-image` | `understand_image` | mmx vision CLI | (mmx config) |
 | `mcp-bridge` | `<server>_<tool>` per MCP server | Any MCP server | `mcp-servers.json` config |
-| `subagent` | `spawn_subagent` | child pi process | (none) |
+
+> **0.3.0 removed `subagent`.** It lived here for historical reasons but is conceptually
+> infrastructure (child-process spawning), not a tool. Extracted to its own package:
+> `npm i -D @shog-lab/pi-subagent`. The tool name (`spawn_subagent`) is unchanged.
 
 Dir names are kebab-case (matching the convention used by `pi-mind`'s extensions and skills). Tool names stay `snake_case` so the LLM-facing surface is stable across this rename.
 
