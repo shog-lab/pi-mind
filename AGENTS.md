@@ -14,7 +14,8 @@ Guide for AI agents working in this repository.
 | `packages/ralph` | `@shog-lab/pi-goals` | published | Ralph-style autonomous goal execution with PRD loop + worktree isolation. |
 | `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
 | `packages/subagent` | `@shog-lab/pi-subagent` | published | Single `spawn_subagent` tool — fire-and-forget child pi via spawnPi. Extracted from pi-toolkit 0.3.0. |
-| `packages/eval` | `@shog-lab/pi-eval` | **not published** (internal) | Benchmark harness (LongMemEval driver for now). |
+
+LongMemEval benchmark harness lives at `packages/core/eval/` (was its own workspace `packages/eval/` through 2026-05-26). Internal dev tooling; not published.
 
 Publishing is **manual per-package**, no CI — see [[publish-flow]] memory.
 

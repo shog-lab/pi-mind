@@ -22,8 +22,7 @@ Atomic peer-to-peer messaging for pi sessions: open multiple pi windows in the s
 ### [`@shog-lab/pi-utils`](packages/utils/) — internal infrastructure
 Shared by the above: `spawnPi()` (programmatic pi spawn with `--mode json` + token extraction) and `resolvePiMindDir()` (repo-rooted `.pi-mind` path that survives git worktree teardown). Not loaded as a pi extension.
 
-### [`@shog-lab/pi-eval`](packages/eval/) — evaluation harness (private)
-Runs pi-mind against [LongMemEval](https://github.com/xiaowu0162/LongMemEval) and scores with the benchmark's official 5-prompt methodology (verbatim port). Outputs `hypothesis.jsonl` compatible with the upstream Python evaluator. Private workspace until methodology is stable enough for public claims.
+_(Memory benchmark harness for LongMemEval lives at [`packages/core/eval/`](packages/core/eval/) — folded into pi-mind-core on 2026-05-27 since it's internal dev tooling that only ever measured memory.)_
 
 ## Quickstart
 

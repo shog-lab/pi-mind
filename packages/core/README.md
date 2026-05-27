@@ -159,15 +159,18 @@ pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Ot
 
 ## Benchmarks
 
-Two scripts ship for measuring memory quality:
+Two evaluation paths ship inside this package:
 
-- **`scripts/run-longmemeval.ts`** — runs the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) benchmark against the memory system. Useful for quantitative comparisons against baseline RAG.
+- **`eval/`** — full LongMemEval harness (datasets, pi-session driver, runner, report). Produces `hypothesis.jsonl` to feed into LongMemEval's official Python evaluator. See [`eval/README.md`](eval/README.md) for the out-of-process scoring pipeline.
   ```bash
-  DEEPSEEK_API_KEY=... npx tsx scripts/run-longmemeval.ts --limit 100
+  npm run build --workspace=packages/core
+  node packages/core/dist/eval/cli.js --split oracle --limit 5 --out /tmp/eval-run
   ```
-- **`scripts/verify-worth-remembering.ts`** — checks the LLM detector's precision/recall against a hand-curated case set. Useful before merging changes to the prompt. Run with `PI_MIND_LLM_MODEL=qwen3:4b npm run verify-worth-remembering --workspace=packages/core`.
+- **`scripts/verify-worth-remembering.ts`** — checks the LLM detector's precision/recall against a hand-curated case set. Useful before merging changes to the worth-remembering-llm prompt. Run with `PI_MIND_LLM_MODEL=qwen3:4b npm run verify-worth-remembering --workspace=packages/core`.
 
 Both bypass any container or daemon — they import `MemoryCore` directly. This makes the memory module independently testable.
+
+History: `eval/` lived in its own `packages/eval/` workspace through 2026-05-26. Folded into core on 2026-05-27 because it only ever evaluated memory and was never published — a workspace boundary wasn't earning its overhead. The git-tracked rename preserves history.
 
 ## Architecture
 

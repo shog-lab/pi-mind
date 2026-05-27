@@ -11,8 +11,7 @@
     "packages/toolkit",
     "packages/ralph",
     "packages/bus",
-    "packages/subagent",
-    "packages/eval"
+    "packages/subagent"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
