@@ -9,7 +9,6 @@
     "packages/utils",
     "packages/core",
     "packages/toolkit",
-    "packages/ralph",
     "packages/bus",
     "packages/subagent"
   ],

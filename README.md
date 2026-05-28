@@ -11,10 +11,7 @@ Persistent memory + self-evolution. Three-layer model: **raw/** (event stream), 
 Drop-in extensions the LLM calls at runtime: **web_search** + **understand_image** (via mmx CLI — fill MiniMax's missing search/vision capabilities), **mcp-bridge** (proxy any MCP server as pi tools). _0.3.0 removed `spawn_subagent` — see pi-subagent below._
 
 ### [`@shog-lab/pi-subagent`](packages/subagent/) — child-pi spawning primitive
-Single `spawn_subagent` tool: agent passes `cwd` + `prompt`, gets back a clean child pi's response. Extracted from pi-toolkit in toolkit 0.3.0 because it's infrastructure (process spawning), not a leaf tool. Used by ralph and any custom agent flow that needs sub-pi work.
-
-### [`@shog-lab/pi-goals`](packages/ralph/) — autonomous goal loop
-Ralph-style execution: pick story → execution sub-agent → isolated verification sub-agent → repeat. State lives in `prd.json` (no DB). Per-PRD git-worktree isolation (`<repo>/.ralph-worktrees/<key>/`). Single `goal` tool. Resume = re-run same command. Real token reporting per iteration.
+Single `spawn_subagent` tool: agent passes `cwd` + `prompt`, gets back a clean child pi's response. Extracted from pi-toolkit in toolkit 0.3.0 because it's infrastructure (process spawning), not a leaf tool. Useful for scoped sub-tasks that need a fresh agent context.
 
 ### [`@shog-lab/pi-bus`](packages/bus/) — inter-pi messaging primitive
 Atomic peer-to-peer messaging for pi sessions: open multiple pi windows in the same repo, they auto-join a shared bus. 3 tools (`agent_list` / `agent_send` / `agent_inbox`). Incoming messages auto-trigger the recipient's agent via `pi.sendUserMessage` — even when it's idle waiting for user input. Per-repo scoped, fire-and-forget, no orchestration.
@@ -35,10 +32,12 @@ pi   # extensions + skills auto-loaded
 Pick what you need:
 
 ```bash
-npm i -D @shog-lab/pi-mind-core                            # memory + self-evolution only
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit       # + image gen, web search, MCP bridge, sub-agent
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-goals         # + ralph (autonomous goal loop)
+npm i -D @shog-lab/pi-mind-core                                       # memory + self-evolution only
+npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit                  # + web search, image, MCP bridge
+npm i -D @shog-lab/pi-mind-core @shog-lab/pi-bus @shog-lab/pi-subagent # + inter-pi messaging + child-pi spawning
 ```
+
+> **Note:** `@shog-lab/pi-goals` (ralph) was deprecated and removed from this monorepo on 2026-05-28. The autonomous-loop pattern it implemented is out of scope for this ecosystem; compose `pi-bus` + `pi-subagent` + `git worktree` for human-in-the-loop alternatives. The package versions remain installable from npm if you depend on the old behavior — pin `@shog-lab/pi-goals@0.5.1`.
 
 See each package's README for details.
 
@@ -62,7 +61,7 @@ npm publish -w @shog-lab/pi-utils            # publish utils only
 
 ## Dogfooding pi-mind in this repo
 
-The monorepo's own `.pi/extensions/` is symlinked into `packages/*/dist/` via each postinstall. Running `pi` here loads memory, toolkit, ralph — letting the agent work on its own codebase.
+The monorepo's own `.pi/extensions/` is symlinked into `packages/*/dist/` via each postinstall. Running `pi` here loads memory, toolkit, bus, subagent — letting the agent work on its own codebase.
 
 ```bash
 npx tsc -w -p packages/core   # watch + rebuild memory; pi picks up dist/ changes on next invocation

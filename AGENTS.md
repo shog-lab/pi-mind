@@ -11,11 +11,12 @@ Guide for AI agents working in this repository.
 | `packages/utils` | `@shog-lab/pi-utils` | published | Shared infra: `spawnPi`, `resolvePiMindDir`. Depended on by every other workspace. |
 | `packages/core` | `@shog-lab/pi-mind-core` | published | Persistent memory + skill self-evolution. Layers: raw, knowledge, KG. |
 | `packages/toolkit` | `@shog-lab/pi-toolkit` | published | Common pi extensions: web search, image understanding, MCP server bridge. (0.3.0 removed `spawn_subagent` — see pi-subagent.) |
-| `packages/ralph` | `@shog-lab/pi-goals` | published | Ralph-style autonomous goal execution with PRD loop + worktree isolation. |
 | `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
 | `packages/subagent` | `@shog-lab/pi-subagent` | published | Single `spawn_subagent` tool — fire-and-forget child pi via spawnPi. Extracted from pi-toolkit 0.3.0. |
 
 LongMemEval benchmark harness lives at `packages/core/eval/` (was its own workspace `packages/eval/` through 2026-05-26). Internal dev tooling; not published.
+
+`@shog-lab/pi-goals` (ralph) was published through 0.5.1 then **deprecated + removed from the monorepo on 2026-05-28** (see Design Principles below). Published versions remain installable from npm with a deprecation warning; pin `@shog-lab/pi-goals@0.5.1` if you depend on the old behavior.
 
 Publishing is **manual per-package**, no CI — see [[publish-flow]] memory.
 
@@ -87,7 +88,7 @@ A `remember_this` call routed through three agents via bus is still legal **if t
 | `pi-toolkit` (web-search / understand-image / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
 | `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
 | `pi-bus` | ✅ The substrate enabling principle 3 | — |
-| `pi-goals` (ralph) | ❌ Anti-pattern — being removed | Mario specifically called out "ralphing the loop". Bus + subagent + git can compose any ralph-style workflow without forcing the unattended loop. Deprecation pending. |
+| ~~`pi-goals` (ralph)~~ | 🗑️ **Removed 2026-05-28** | Was an anti-pattern (autonomous PRD loop with theatrical self-verify). Replaced by composing `pi-bus` + `pi-subagent` + git worktree with an in-the-loop human or keeper agent. Last release `0.5.1` remains on npm as deprecated, pinnable as fallback. |
 
 ## Development Commands
 
@@ -102,7 +103,7 @@ Per-workspace (use path or full scoped name):
 
 ```bash
 npm run build --workspace=packages/core
-npm run test --workspace=packages/ralph
+npm run test --workspace=packages/bus
 npm run typecheck --workspace=packages/toolkit
 ```
 
@@ -110,7 +111,7 @@ Watch mode:
 
 ```bash
 npx tsc -w -p packages/core
-npx tsc -w -p packages/ralph
+npx tsc -w -p packages/bus
 ```
 
 ## Loaded Extensions & Skills
@@ -122,8 +123,7 @@ npx tsc -w -p packages/ralph
 | Extension | Source dir | Purpose |
 |---|---|---|
 | `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]), `remember_this` / `recall_memory` / `observe` / `forget_memory` tools, worth-remembering-llm auto-capture at agent_end. |
-| `skill-evolution` | `packages/core/extensions/skill-evolution/` | `write_skill` tool — agent edits `.pi/skills/<name>/SKILL.md` directly with `.bak.<ts>` backups. Backs the `define-skill` / `revise-skill` skills. |
-| `goals` | `packages/ralph/extensions/goals/` | Single `goal` **tool** (not slash command). `--from prd.json` required. Per-PRD git worktree isolation. State lives in `prd.json`; resume by re-running same command. |
+| `skill-evolution` | `packages/core/extensions/skill-evolution/` | `write_skill` tool — agent edits `.pi/skills/<name>/SKILL.md` directly with `.bak.<ts>` backups. Backs the `define-skill` / `revise-skill` skills. (Slated for refactor: `write_skill` → `create_skill` + `update_skill` with mandatory ask-first; see Design Principles.) |
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `understand-image` | `packages/toolkit/extensions/understand-image/` | `understand_image` tool — base64 + URL + path; auto-saves base64 attachments to temp files. mmx vision backend. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |
@@ -142,9 +142,8 @@ Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.
 | `define-skill` | `packages/core/skills/define-skill/` | Compose a brand-new skill via `write_skill`. |
 | `revise-skill` | `packages/core/skills/revise-skill/` | Update an existing skill via `write_skill`. |
 | `agent-browser` | `node_modules/agent-browser/skills/agent-browser/` | Browser automation (external dep). |
-| `prd` | `packages/ralph/skills/prd/` | Generate Product Requirements Documents. |
-| `prd-compile` | `packages/ralph/skills/prd-compile/` | Compile markdown PRD → `prd.json`. (Was `ralph` before 0.1.2.) |
-| `goals-verify` | `packages/ralph/skills/goals-verify/` | Restricted tool allowlist for verification sub-agents. |
+
+(The `prd` / `prd-compile` / `goals-verify` skills were removed with `packages/ralph/` on 2026-05-28. If you want PRD-style work, write the markdown yourself and compose `pi-bus` + `pi-subagent` + git worktree for execution with a human keeper in the loop.)
 
 ## Directory Conventions
 
@@ -159,18 +158,11 @@ All shared state lives under three roots, all resolvable from any cwd in the rep
 ├── knowledge/*.md              compiled facts (frontmatter-tagged)
 └── graph/                      KG managed from frontmatter triples
 
-.pi-goals/                      # $PI_GOALS_DIR — reserved for future ralph state
-                                  (0.5.0 ralph is stateless here — state lives in
-                                  the user's prd.json + per-worktree progress)
-
-.ralph-worktrees/               per-PRD git worktrees (ralph 0.4.0+)
-└── <project>-<branch>/         isolated checkout for one goal
-    └── ralph-progress.txt      append-only iteration log (per worktree)
 ```
 
-**Path resolution** uses `git rev-parse --git-common-dir` (see `packages/utils/src/paths.ts`) — both `.pi-mind/` and `.pi-goals/` always point to the **main repo root** even when called from a linked worktree. `$PI_MIND_DIR` / `$PI_GOALS_DIR` env vars override.
+**Path resolution** uses `git rev-parse --git-common-dir` (see `packages/utils/src/paths.ts`) — `.pi-mind/` always points to the **main repo root** even when called from a linked worktree. `$PI_MIND_DIR` env var overrides.
 
-**Add `.ralph-worktrees/` to your `.gitignore`** — ralph logs a one-time hint when it first creates the directory; we don't auto-modify your `.gitignore`.
+(Pre-2026-05-28 sibling dirs `.pi-goals/` and `.ralph-worktrees/` were used by the now-removed `pi-goals` package. They're still in `.gitignore` for users with residual data, but no current package writes to them.)
 
 ### Knowledge frontmatter schema
 
@@ -198,9 +190,8 @@ Content here.
 | `packages/core/extensions/memory/index.ts` | Memory extension entry; worth-remembering-llm, remember_this. |
 | `packages/core/extensions/memory/core.ts` | Hybrid retrieval pipeline (vector + FTS5 + KG + links). |
 | `packages/core/extensions/memory/knowledge-graph.ts` | KG storage + entity-fact queries. |
-| `packages/ralph/extensions/goals/index.ts` | Single `goal` tool registration (~50 lines). |
-| `packages/ralph/extensions/goals/loop.ts` | Execution + verification loop; `ensureWorktree`; `loadPRD` / `savePRD`. |
-| `packages/ralph/extensions/goals/schema.ts` | PRD / UserStory / VerificationResult types + tool allowlist constants. |
+| `packages/bus/extensions/bus/index.ts` | bus extension: session registry, fs.watch inbox, 3 tools, push-trigger via `pi.sendUserMessage`. |
+| `packages/subagent/extensions/subagent/index.ts` | `spawn_subagent` tool — wraps `spawnPi`. |
 | `packages/toolkit/extensions/mcp-bridge/mcp-client.ts` | MCP stdio JSON-RPC client. |
 
 ## Architecture Notes
@@ -214,35 +205,22 @@ Three layers, retrievable as a single hybrid context (Ollama `nomic-embed-text` 
 
 See [[memory-write-impl-notes]] for runtime details + corner cases.
 
-### Goals (Ralph) — 0.5.0 simplified
+### Bus
 
-```
-goal --from prd.json
-    ↓
-loadPRD(path) → schema-validate
-    ↓
-ensureWorktree(cwd, key, prd.branchName) → <repo>/.ralph-worktrees/<project>-<branch>/
-    ↓
-loop until all stories pass or maxIterations:
-    story = prd.userStories.find(!passes)
-    Execution sub-pi  ← spawnPi, --no-extensions, --tools bash,read,write,edit
-        cwd = worktreePath           ← user's main checkout never touched
-        ↓ implements ONE story
-    Verification sub-pi ← separate pi process, --tools bash,read (read-only)
-        cwd = worktreePath
-        ↓ returns { passes: bool, evidence, reasons } — schema-validated
-    story.passes = verify.passes  (mutate in-memory PRD)
-    savePRD(path, prd)            (atomic rename, prd.json IS the state)
-    append <worktree>/ralph-progress.txt
-```
+`@shog-lab/pi-bus` is the **substrate for inter-pi coordination**. Any pi started in a repo auto-joins a per-repo bus (scoped via `git rev-parse --git-common-dir`). Three tools: `agent_list` / `agent_send` / `agent_inbox`.
 
-**State lives in prd.json.** No DB, no state machine. Pause = `Ctrl+C`. Resume = re-run `goal --from prd.json` — loop picks up at the next `passes:false` story. Multi-goal management = `ls .ralph-worktrees/`, `cat prd.json`.
+Push delivery: when a message lands in your inbox, the extension calls
+`pi.sendUserMessage(text, { deliverAs: "followUp" })`. Recipient's agent treats it as a user turn and starts work — even when sitting idle. `followUp` mode waits until the agent is fully idle before injecting, so it never interrupts mid-stream.
 
-Sub-agents run with `--no-extensions` — they **cannot** load any pi extension, locked to built-in tools only. Verification uses a strict read-only allowlist (no `write`/`edit`) so it cannot tamper with what it's checking.
+This is what makes bus useful as the **graduated-autonomy substrate** (Design Principle 3): the same protocol carries human review (terminal B watched by a human), LLM keeper review (terminal B running an auto-judging agent), and silent fallback (auto-approve keeper) — same code, different stance.
 
-Memory + `.pi-goals/` resolve to the main repo root regardless of worktree (via `git-common-dir`). After a goal finishes the worktree survives for review — clean up with `git worktree remove .ralph-worktrees/<key>`.
+File layout (per-repo): `<repo>/.pi-mind/bus/sessions/<id>/{meta.json, inbox/<msg-id>.json}`. Heartbeat every 30s; stale sessions (>90s no heartbeat) auto-filter from `agent_list`.
 
-History: 0.4.0 added worktree isolation. 0.5.0 stripped the over-engineering (SQLite DB, 7-state machine, `update_goal`/`list_goals`/`get_goal` tools, tokenBudget enforcement, pause/resume state machine, `pi-goals-config.json` loader, global progress.txt). Net ~1000 → ~500 LoC; ralph is now the smallest valuable thing that does the job. See packages/ralph/README.md "What changed from 0.4.0" for the breaking-changes list.
+### Sub-agent
+
+`@shog-lab/pi-subagent` provides `spawn_subagent` — agent passes a `cwd` + `prompt`, gets back a fresh child pi's response. Child runs with `--no-extensions` (no memory, no other extensions), giving you a clean-slate scoped task. Returns response text + token usage from the child's `agent_end` event.
+
+Compose with `git worktree` for physical isolation, with `pi-bus` for inter-session coordination, with manual loops for what `pi-goals` used to automate (with a human in the loop per iteration — see Design Principles).
 
 ### Subprocess discipline
 
@@ -260,8 +238,8 @@ See [[e2e-before-publish]] memory.
 
 ## Conventions
 
-- **Single source of truth for schemas** — frontmatter via `packages/core/lib/schema.ts`, goal types via `packages/ralph/extensions/goals/schema.ts`; never duplicate.
-- **File-based coordination** — packages share `.pi-mind/` / `.pi-goals/`; no in-process IPC.
+- **Single source of truth for schemas** — frontmatter via `packages/core/lib/schema.ts`; bus message / inbox schemas inline in `packages/bus/extensions/bus/index.ts`; never duplicate.
+- **File-based coordination** — packages share `.pi-mind/` (memory + bus state); no in-process IPC.
 - **Cron-driven evolution** — scheduled maintenance runs via OS cron, not in-process timer (pi has no daemon).
 - **Concurrent writes** — `withGroupLock` (proper-lockfile) for filesystem, `busy_timeout = 5000` for SQLite.
 - **Idempotent postinstall** — `bin/init.js` symlink creation is safe to re-run.
@@ -273,7 +251,7 @@ See [[e2e-before-publish]] memory.
 ```bash
 npm test                                       # All workspaces (~180 tests)
 npm run test --workspace=packages/core         # Memory tests
-npm run test --workspace=packages/ralph        # Goals tests
+npm run test --workspace=packages/bus          # Bus tests
 node packages/core/scripts/knowledge-lint.ts   # Check knowledge/ schema health
 ```
 
@@ -282,8 +260,8 @@ node packages/core/scripts/knowledge-lint.ts   # Check knowledge/ schema health
 | Variable | Used by | Notes |
 |---|---|---|
 | `PI_MIND_DIR` | pi-utils `resolvePiMindDir` | Override memory + skills root (default: walks up to main repo via `git-common-dir`, then `.pi-mind/`) |
-| `PI_GOALS_DIR` | pi-goals store | Override goals root (default: sibling of `$PI_MIND_DIR`, i.e. `.pi-goals/`) |
 | `PI_BIN` | pi-utils `spawnPi` | Override pi binary path (default: `"pi"` via `$PATH`) |
-| `MODEL` | ralph sub-agent spawn | Model name for execution + verification sub-agents (default: `minimax-cn/MiniMax-M2.7`) |
+| `PI_AGENT_NAME` | pi-bus | Override auto-generated friendly bus name (e.g. `calm-fox-x2k`) |
+| `MODEL` | pi-subagent (`spawn_subagent`) | Model for child pi (default: `minimax-cn/MiniMax-M2.7`) |
 | `MINIMAX_API_KEY` / `MINIMAX_CN_API_KEY` | toolkit `web-search` + `understand-image` | mmx auth (fallback to `~/.mmx/config.json` if env unset) |
-| `DEEPSEEK_API_KEY` | pi-eval LongMemEval driver | Judge model for benchmark scoring |
+| `DEEPSEEK_API_KEY` | LongMemEval driver in `packages/core/eval/` | Judge model for benchmark scoring |
