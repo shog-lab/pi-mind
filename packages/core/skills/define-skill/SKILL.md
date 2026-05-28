@@ -1,6 +1,6 @@
 ---
 name: define-skill
-description: Author a new pi skill from a user request — draft, review with the user, then commit via write_skill.
+description: Author a new pi skill from a user request — draft, review with the user, then commit via create_skill.
 ---
 
 # define-skill
@@ -63,11 +63,11 @@ description: <one sentence; will appear in the agent's skill list>
 2. **Pick a name**: kebab-case, ≤64 chars, descriptive of the *job*, not the *implementation*. `deploy-staging` > `run-bash-script`.
 3. **Sketch the body** following the structure above. Lean concrete; cite specific files / commands / env vars from this repo when possible.
 4. **Show the draft to the user** in your reply — let them eyeball it before writing.
-5. **When they approve**, call `write_skill({name, description, body})`. The tool will write `.pi/skills/<name>/SKILL.md` and back up any previous version.
+5. **When they approve**, call `create_skill({name, description, body})`. (`create_skill` will FAIL if a skill with that name exists — use `revise-skill` workflow + `update_skill` tool for that case.) The tool will write `.pi/skills/<name>/SKILL.md`.
 6. **Remind the user** that pi has to restart before the new skill is loadable.
 
 ## Don't
 
-- Don't call `write_skill` without showing the body to the user first. This is an explicit, user-driven action — the user reviewing the body IS the safety mechanism.
+- Don't call `create_skill` without showing the body to the user first. The user reviewing and saying "yes" IS the gate — without that explicit ok, you must not commit a skill. (See "Behavior-changing autonomy requires inline gate" in AGENTS.md.)
 - Don't pick a name that collides with an installed-package skill (the tool will refuse).
 - Don't write skills speculatively ("the user might want this later"). Skills are written on demand.

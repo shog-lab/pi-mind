@@ -1,7 +1,7 @@
 {
   "name": "@shog-lab/pi-mind-core",
-  "version": "0.5.4",
-  "description": "Give pi a mind: portable memory and self-evolution as a drop-in pi-coding-agent extension.",
+  "version": "0.6.0",
+  "description": "Give pi a mind: portable memory and self-evolution as a drop-in pi-coding-agent extension. 0.6.0 removes worth-remembering-llm auto-capture (memory is passive — see Design Principles); skill-evolution refactor pending in same release.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -16,7 +16,6 @@
     "dev": "tsc --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
     "lint:knowledge": "tsx scripts/knowledge-lint.ts",
-    "verify-worth-remembering": "tsx scripts/verify-worth-remembering.ts",
     "test": "vitest run",
     "prepare": "npm run build",
     "postinstall": "node bin/init.js"

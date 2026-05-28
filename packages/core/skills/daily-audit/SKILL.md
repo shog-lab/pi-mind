@@ -1,6 +1,6 @@
 ---
 name: daily-audit
-description: Daily memory audit — lint schema, sample worth-remembering decisions, archive old compactions, report.
+description: Daily memory audit — lint schema, sample recent memory writes, archive old compactions, report.
 ---
 
 # daily-audit
@@ -10,7 +10,7 @@ Run a periodic health check over `$PI_MIND_DIR/`. Designed to be triggered by OS
 ## What it does
 
 1. Run knowledge-lint over `knowledge/` and report errors / warnings / duplicates
-2. Sample recent worth-remembering-llm decisions from the maintenance log (precision spot-check)
+2. Sample recent explicit memory writes from the maintenance log (sanity check what's been saved)
 3. Archive compaction files older than 14 days
 4. Report results as a single concise summary
 
@@ -35,22 +35,19 @@ npx pi-mind-lint --fix              # apply (after user confirms if invoked inte
 
 Detailed flow: `../knowledge-lint/SKILL.md`.
 
-### 2. Worth-remembering LLM decision sample
+### 2. Memory write sample
+
+Since 0.6.0 there is no background auto-capture — every entry in `knowledge/` came from an explicit `remember_this` / `observe` call (or `session_compact`). Sample recent activity:
 
 ```bash
 DATE=$(date +%Y-%m-%d)
 LOG="$PI_MIND_DIR/raw/maintenance-log/${DATE}.jsonl"
-grep "worth-remembering-llm" "$LOG" 2>/dev/null | head -3
-grep "worth-remembering-saved" "$LOG" 2>/dev/null | head -3
-grep "remember-this" "$LOG" 2>/dev/null | head -3
+grep "remember-this" "$LOG" 2>/dev/null | head -5
+grep "observe-saved" "$LOG" 2>/dev/null | head -3
+grep "compaction-saved" "$LOG" 2>/dev/null | head -3
 ```
 
-`worth-remembering-llm` entries: `{shouldRemember: true | false | null, type?}`.
-- `null` = Ollama call failed (down / timeout / network)
-- Several consecutive `null` = Ollama unhealthy, surface to user
-
-`worth-remembering-saved` entries log actual writes to knowledge/.
-`remember-this` entries log explicit tool calls from the agent.
+Eyeball the sample: are the saved entries useful and self-contained? Anything obviously low-signal should be flagged for `forget_memory`.
 
 ### 3. Archive old compactions
 
@@ -78,10 +75,10 @@ Output a single message in this shape:
 - Duplicates: N
 - Action: <none / list of remaining issues>
 
-### Feedback detection sample (3 most recent)
-- <hash or excerpt> → <true/false/null>
+### Memory writes today (sample)
+- <hash or excerpt> → <remember-this / observe / compaction>
 - ...
-- Health: <ok / Ollama failures detected>
+- Quality: <ok / N entries look low-signal — recommend forget_memory>
 
 ### Compaction archive
 - Archived N files older than 14 days

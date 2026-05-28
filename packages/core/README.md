@@ -159,18 +159,16 @@ pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Ot
 
 ## Benchmarks
 
-Two evaluation paths ship inside this package:
+`eval/` ships the LongMemEval harness (datasets, pi-session driver, runner, report). Produces `hypothesis.jsonl` to feed into LongMemEval's official Python evaluator. See [`eval/README.md`](eval/README.md) for the out-of-process scoring pipeline.
 
-- **`eval/`** — full LongMemEval harness (datasets, pi-session driver, runner, report). Produces `hypothesis.jsonl` to feed into LongMemEval's official Python evaluator. See [`eval/README.md`](eval/README.md) for the out-of-process scoring pipeline.
-  ```bash
-  npm run build --workspace=packages/core
-  node packages/core/dist/eval/cli.js --split oracle --limit 5 --out /tmp/eval-run
-  ```
-- **`scripts/verify-worth-remembering.ts`** — checks the LLM detector's precision/recall against a hand-curated case set. Useful before merging changes to the worth-remembering-llm prompt. Run with `PI_MIND_LLM_MODEL=qwen3:4b npm run verify-worth-remembering --workspace=packages/core`.
+```bash
+npm run build --workspace=packages/core
+node packages/core/dist/eval/cli.js --split oracle --limit 5 --out /tmp/eval-run
+```
 
-Both bypass any container or daemon — they import `MemoryCore` directly. This makes the memory module independently testable.
+The harness bypasses any container or daemon — it imports `MemoryCore` directly. This makes the memory module independently testable.
 
-History: `eval/` lived in its own `packages/eval/` workspace through 2026-05-26. Folded into core on 2026-05-27 because it only ever evaluated memory and was never published — a workspace boundary wasn't earning its overhead. The git-tracked rename preserves history.
+History: `eval/` lived in its own `packages/eval/` workspace through 2026-05-26. Folded into core on 2026-05-27 because it only ever evaluated memory and was never published — a workspace boundary wasn't earning its overhead. The git-tracked rename preserves history. The separate `scripts/verify-worth-remembering.ts` precision-checker shipped through 0.5.x — removed in 0.6.0 along with the `worth-remembering-llm` detector itself (no detector to verify).
 
 ## Architecture
 
@@ -180,20 +178,25 @@ pi process (the runtime)
 memory extension initializes:
   - reads .pi-mind/ from disk
   - syncs FTS5 + vector index in .pi-mind/.pi-mind-index.db
-  - registers hooks: before_agent_start / turn_end / agent_end / session_compact
-  - registers tools: remember_this, mark_daily_audit_complete
+  - registers hooks: before_agent_start / turn_end / session_compact
+  - registers tools: remember_this, observe, recall_memory,
+                     mark_daily_audit_complete
+    (no forget_memory tool — old memories drop via retention policy in
+    lib/forget.ts, auto-run every 50 writes; for emergency manual prune
+    use the CLI: `npx pi-mind-lint --prune --apply`)
   - injects system-prompt.md into agent context (via pi.injectContext)
   ↓
 agent runs:
   - before_agent_start: L1 always-inject + L2 query-relevant retrieval; cache userPrompt
   - turn_end: archive sessions (filtered to this host repo only — see lib/session-archive.ts)
-  - agent_end: run worth-remembering-llm (qwen3:4b via Ollama, think:false, keep_alive 30m);
-               skipped if agent already called remember_this this loop
-  - on saveMemory: bump persistent counter; every 50 writes auto-run forgetOldMemories
+  - on saveMemory (from remember_this / observe): bump persistent counter;
+    every 50 writes auto-run forgetOldMemories (mechanical retention policy)
   - session_compact: pi-side summary saved to raw/compaction/ + B/F subagent spawn
   ↓ pi process exit
 SQLite + filesystem persist, in-memory state cleared
 ```
+
+**No `agent_end` hook in 0.6.0+** — there used to be a `worth-remembering-llm` detector (qwen3:4b via Ollama) that auto-captured high-signal turns. Removed in 0.6.0 per the "Memory is passive" design principle (see top-level `AGENTS.md`): a background LLM judge writes silent prescriptions, which violates "you must observe the booboo before memory can fix it." All curated knowledge now requires explicit `remember_this` / `observe` calls in a visible turn.
 
 Key implementation notes:
 

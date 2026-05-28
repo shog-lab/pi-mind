@@ -1,6 +1,6 @@
 ---
 name: revise-skill
-description: Modify an existing pi skill based on a user-requested change — read live, apply the change, commit via write_skill.
+description: Modify an existing pi skill based on a user-requested change — read live, apply the change, commit via update_skill.
 ---
 
 # revise-skill
@@ -19,9 +19,9 @@ Use this when the user asks you to change an existing skill ("X skill should als
 
 4. **Apply the change minimally**. Don't rewrite the whole skill just to tweak one step. If the change is "add a step before Y", insert one numbered item. If "rename X to Y", search-and-replace inside your draft.
 
-5. **Show the user the new body** (or a diff) before committing. Same principle as define-skill: explicit review = the safety mechanism.
+5. **Show the user a diff** (what's changing, not just the new body) before committing. Same principle as define-skill: explicit review = the gate. (See "Behavior-changing autonomy requires inline gate" in AGENTS.md.)
 
-6. **When they approve**, call `write_skill({name, description, body})` with the FULL new body. The tool will automatically back up the previous content to a same-dir timestamped `.bak`.
+6. **When they approve**, call `update_skill({name, description, body})` with the FULL new body. The tool will automatically back up the previous content to a same-dir timestamped `.bak`. (`update_skill` will FAIL if the skill doesn't already exist — for new skills, use the `define-skill` workflow + `create_skill` tool.)
 
 7. **Remind the user** to restart pi if they want the change live.
 
@@ -37,10 +37,10 @@ If the user later regrets the change:
 - The previous content is at `.pi/skills/<name>/SKILL.md.bak.<timestamp>`.
 - Manually: `cp .pi/skills/<name>/SKILL.md.bak.<ts> .pi/skills/<name>/SKILL.md`.
 
-There is intentionally no rollback tool in v1 — manual revert is fine because the user is in the conversation when they realize it's wrong, and the .bak path is right there in the previous write_skill output.
+There is intentionally no rollback tool — manual revert is fine because the user is in the conversation when they realize it's wrong, and the .bak path is right there in the previous update_skill output.
 
 ## Don't
 
-- Don't call `write_skill` without the user seeing the new body.
+- Don't call `update_skill` without the user seeing a diff. The user reviewing and saying "yes" IS the gate — without it, you must not commit.
 - Don't preserve old structure "just in case" — if the user asked for a clean change, give them a clean change.
 - Don't try to revise a skill the user hasn't named explicitly — ask "which skill?" if unclear.

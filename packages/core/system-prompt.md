@@ -93,9 +93,11 @@ When the user asks you to **create** or **change** a skill, load the correspondi
 - `use define-skill skill` — for new skills
 - `use revise-skill skill` — to modify an existing one
 
-Both end by calling the `write_skill` tool, which handles the correct path, frontmatter, and a same-dir backup of any previous version. Skills only become loadable on the next pi startup.
+Both end by calling **`create_skill`** (new) or **`update_skill`** (modify existing). The tools handle the correct path, frontmatter, and a same-dir backup of any previous version. Skills only become loadable on the next pi startup.
 
-Do not call `write_skill` outside one of these flows — skill files shape future agent behavior, so authoring must be a deliberate, user-driven action.
+**`create_skill` and `update_skill` require explicit user approval BEFORE you call them.** Skill files shape future agent behavior across all sessions, so the gate is: propose the name + description + body (or diff) in chat, wait for the user to say yes, then call the tool. The define-skill / revise-skill workflows walk you through this; do not shortcut them.
+
+Do not call these tools outside the define-skill / revise-skill workflows — and even inside them, the workflow ends with you proposing the draft, not auto-committing.
 
 ## Image-bearing memories
 

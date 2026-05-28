@@ -83,8 +83,8 @@ A `remember_this` call routed through three agents via bus is still legal **if t
 | Package | Alignment | Note |
 |---|---|---|
 | `pi-utils` | ✅ Pure infra | No autonomy concerns |
-| `pi-mind-core` memory (`remember_this`, retrieval, retention) | ✅ Per principle 2 | After removing `worth-remembering-llm` in 0.6.0 |
-| `pi-mind-core` skill-evolution | ✅ Per principle 1 | After replacing `write_skill` with ask-first `create_skill` + `update_skill` in 0.6.0 |
+| `pi-mind-core` memory (`remember_this`, retrieval, retention) | ✅ Per principle 2 | `worth-remembering-llm` removed in 0.6.0 — memory is now passive |
+| `pi-mind-core` skill-evolution | ✅ Per principle 1 | `write_skill` replaced by ask-first `create_skill` + `update_skill` in 0.6.0 |
 | `pi-toolkit` (web-search / understand-image / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
 | `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
 | `pi-bus` | ✅ The substrate enabling principle 3 | — |
@@ -122,8 +122,8 @@ npx tsc -w -p packages/bus
 
 | Extension | Source dir | Purpose |
 |---|---|---|
-| `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]), `remember_this` / `recall_memory` / `observe` / `forget_memory` tools, worth-remembering-llm auto-capture at agent_end. |
-| `skill-evolution` | `packages/core/extensions/skill-evolution/` | `write_skill` tool — agent edits `.pi/skills/<name>/SKILL.md` directly with `.bak.<ts>` backups. Backs the `define-skill` / `revise-skill` skills. (Slated for refactor: `write_skill` → `create_skill` + `update_skill` with mandatory ask-first; see Design Principles.) |
+| `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]); tools: `remember_this` / `recall_memory` / `observe` / `mark_daily_audit_complete`. 0.6.0 removed the `worth-remembering-llm` auto-capture (memory is passive). |
+| `skill-evolution` | `packages/core/extensions/skill-evolution/` | `create_skill` + `update_skill` tools — agent proposes in chat, gets explicit user approval, then writes `.pi/skills/<name>/SKILL.md` (with `.bak.<ts>` on overwrite). Backs the `define-skill` / `revise-skill` skills. (0.6.0 replaced the prior `write_skill` per Design Principles.) |
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `understand-image` | `packages/toolkit/extensions/understand-image/` | `understand_image` tool — base64 + URL + path; auto-saves base64 attachments to temp files. mmx vision backend. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |

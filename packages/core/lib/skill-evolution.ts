@@ -1,15 +1,19 @@
 /**
  * Skill evolution — agent-authored SKILL.md files.
  *
- * The agent writes skills via the write_skill tool, which calls into here.
- * Skills land directly in <host-repo>/.pi/skills/<name>/SKILL.md so pi
- * loads them on next startup. Existing skill content (if any) is preserved
- * in a same-dir timestamped .bak file before being overwritten, so rollback
- * is just a `cp` away.
+ * 0.6.0 split the single `write_skill` tool into `create_skill` + `update_skill`
+ * (one fails if the skill exists, the other fails if it doesn't). The split
+ * forces deliberate intent at the call site and lets the user-confirmation
+ * prompt be more specific ("Create new skill 'X'?" vs "Update existing 'Y'?").
  *
- * No draft/promote pattern, no separate evolution-state directory: skill
- * generation is only triggered by explicit user request in the same
- * conversation turn, so the user can verify the result immediately.
+ * The underlying file write (with .bak.<ts> backup on overwrite) is identical
+ * for both; only the existence pre-check differs.
+ *
+ * Per the "Behavior-changing autonomy requires inline gate" principle, the
+ * tool descriptions instruct agents to propose the skill name + description +
+ * body in chat FIRST and only call this after explicit user approval. The
+ * file write itself is unguarded — the gate lives in the tool description +
+ * (optionally) pi's per-tool permission "ask" mode.
  */
 
 import { copyFileSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
@@ -19,7 +23,7 @@ const VALID_NAME_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
 export type WriteSkillResult =
   | { ok: true; path: string; backedUpTo?: string }
-  | { ok: false; reason: "invalid-name" | "package-conflict" | "io-error"; detail: string };
+  | { ok: false; reason: "invalid-name" | "package-conflict" | "io-error" | "already-exists" | "not-found"; detail: string };
 
 export interface WriteSkillInput {
   name: string;
@@ -31,21 +35,54 @@ export interface WriteSkillInput {
   now?: Date;
 }
 
-export function writeSkill(input: WriteSkillInput): WriteSkillResult {
-  if (!VALID_NAME_RE.test(input.name)) {
+function skillPathOf(hostRoot: string, name: string): { dir: string; path: string } {
+  const dir = join(hostRoot, ".pi", "skills", name);
+  return { dir, path: join(dir, "SKILL.md") };
+}
+
+/** Create a NEW skill. Fails if a skill with the same name already exists. */
+export function createSkill(input: WriteSkillInput): WriteSkillResult {
+  if (!VALID_NAME_RE.test(input.name)) return invalidName(input.name);
+  const { path } = skillPathOf(input.hostRoot, input.name);
+  if (existsSync(path)) {
     return {
       ok: false,
-      reason: "invalid-name",
-      detail: `name must match ${VALID_NAME_RE.source} (lowercase letters/digits/hyphens, start with a letter, ≤64 chars). Got: ${JSON.stringify(input.name)}`,
+      reason: "already-exists",
+      detail: `Skill "${input.name}" already exists at ${path}. Use update_skill to modify it.`,
     };
   }
+  return writeSkillFile(input);
+}
 
-  const skillDir = join(input.hostRoot, ".pi", "skills", input.name);
-  const skillPath = join(skillDir, "SKILL.md");
+/** Update an EXISTING skill. Fails if the skill doesn't already exist.
+ *  Previous content is backed up to a same-dir SKILL.md.bak.<timestamp>. */
+export function updateSkill(input: WriteSkillInput): WriteSkillResult {
+  if (!VALID_NAME_RE.test(input.name)) return invalidName(input.name);
+  const { path } = skillPathOf(input.hostRoot, input.name);
+  if (!existsSync(path)) {
+    return {
+      ok: false,
+      reason: "not-found",
+      detail: `Skill "${input.name}" does not exist at ${path}. Use create_skill to author a new one.`,
+    };
+  }
+  return writeSkillFile(input);
+}
+
+function invalidName(name: string): WriteSkillResult {
+  return {
+    ok: false,
+    reason: "invalid-name",
+    detail: `name must match ${VALID_NAME_RE.source} (lowercase letters/digits/hyphens, start with a letter, ≤64 chars). Got: ${JSON.stringify(name)}`,
+  };
+}
+
+function writeSkillFile(input: WriteSkillInput): WriteSkillResult {
+  const { dir: skillDir, path: skillPath } = skillPathOf(input.hostRoot, input.name);
 
   // Refuse to overwrite a symlink — those come from npm-installed packages
-  // (memory's daily-audit, ralph's prd-compile, etc.) and the user must
-  // pick a different name or remove the symlink manually.
+  // (memory's daily-audit, etc.) and the user must pick a different name or
+  // remove the symlink manually.
   try {
     if (lstatSync(skillDir).isSymbolicLink()) {
       return {
@@ -55,7 +92,7 @@ export function writeSkill(input: WriteSkillInput): WriteSkillResult {
       };
     }
   } catch {
-    // skillDir doesn't exist yet — that's fine, mkdir below will create it
+    // skillDir doesn't exist yet — fine, mkdir below will create it.
   }
 
   let backedUpTo: string | undefined;
@@ -83,8 +120,7 @@ export function writeSkill(input: WriteSkillInput): WriteSkillResult {
 
 function renderSkillMarkdown(name: string, description: string, body: string): string {
   // YAML-escape description if it contains characters that would break flow scalar.
-  // For now, the safest move is to quote always — agents are likely to include
-  // colons, commas, etc.
+  // Safest is to JSON-quote always.
   const escapedDesc = JSON.stringify(description);
   const trimmedBody = body.trimEnd();
   return `---\nname: ${name}\ndescription: ${escapedDesc}\n---\n\n${trimmedBody}\n`;

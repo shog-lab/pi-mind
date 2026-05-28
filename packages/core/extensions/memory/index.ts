@@ -3,17 +3,21 @@
  *
  * Hooks into agent lifecycle:
  * - before_agent_start → capture user prompt + inject L1 + L2/L3 memories
- * - turn_end           → archive sessions (no tool-result capture: we trust
- *                        the agent's own message as the curated digest of
- *                        any tool output; capturing raw tool results creates
- *                        a self-observation loop with pi-mind's own tools)
- * - agent_end          → run worth-remembering detector + save high-signal memories
+ * - turn_end           → archive sessions (no tool-result capture)
  * - session_compact    → save compaction summary + B+D+F maintenance
  *
- * Memory write paths:
- *   worth-remembering-llm @ agent_end — automatic capture (replaces old feedback-llm)
- *   remember_this tool                — explicit save by agent / user-prompted agent
- *   session_compact                    — periodic context-compression summary
+ * Memory write paths (all originate from agent action in a visible turn — see
+ * "Memory is passive" in the ecosystem AGENTS.md "Design Principles"):
+ *   - remember_this tool   — explicit save by agent (typically in response to user)
+ *   - observe tool         — explicit low-bar field note
+ *   - session_compact      — periodic context-compression summary
+ *
+ * Prior to 0.6.0 there was a `worth-remembering-llm` detector that ran
+ * automatically at `agent_end` (qwen3:4b via Ollama, decided whether the
+ * turn was worth saving, wrote silently). It was removed because background
+ * curator LLMs violate the "memory is passive" principle: a wrong write
+ * happens without anyone observing the decision. All curated memory now
+ * requires explicit agent action in a visible turn.
  */
 
 import { existsSync, readdirSync, copyFileSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync, appendFileSync, unlinkSync, renameSync, rmdirSync } from "node:fs";
@@ -67,168 +71,13 @@ function getSemaphore(): Semaphore {
   return _semaphore;
 }
 
-// --- Worth-remembering detection (LLM-only) ---
+// --- Turn-state cache ---
 //
-// Replaces the old feedback-llm path. Single detector runs at agent_end:
-// looks at the full turn (user prompt + agent messages + tool results) and
-// decides whether anything is worth crystallizing into long-term memory.
-//
-// Sub-classifies into one of the existing Subject types. Absorbs the four
-// feedback sub-types (correction/complaint/preference/self-admission) as
-// well as new sources (agent reflections, tool-fetched facts, decisions).
-//
-// Same operational shape as the old feedback-llm: async fire-and-forget,
-// 3s timeout, format:json, silent on failure. Logs every decision for audit.
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
-// Default to qwen3:4b: the verifier (scripts/verify-worth-remembering.ts)
-// shows 7/7 on this prompt vs 1.5B's 5/7 — qwen2.5:1.5b is overeager and
-// false-positives on casual chat / status updates with the multi-class
-// worth-remembering schema. Calls are async fire-and-forget, so the extra
-// latency (a few hundred ms) does not affect the user-facing agent loop.
-// Override with PI_MIND_LLM_MODEL=qwen2.5:1.5b if the larger model isn't pulled.
-const LLM_MODEL = process.env.PI_MIND_LLM_MODEL || "qwen3:4b";
-
-const WORTH_REMEMBERING_SUBJECTS = ["user", "project", "agent-feedback", "reference"] as const;
-
-interface WorthRememberingResult {
-  shouldRemember: boolean;
-  type: typeof WORTH_REMEMBERING_SUBJECTS[number];
-  primary: string;
-  tier: "L1" | "L2";
-  suggestedTags: string[];
-}
-
-function truncateForLLM(text: string, maxChars: number): string {
-  if (!text) return "";
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars - 20) + "\n...[truncated]";
-}
-
-async function detectWorthRemembering(input: {
-  userPrompt: string;
-  agentMessagesText: string;
-}): Promise<WorthRememberingResult | null> {
-  // Per-call timeout: 4B is slower than 1.5B AND first call has a cold-start
-  // (model load) penalty of a few seconds. 30s is generous; calls are async
-  // fire-and-forget anyway, so the agent loop is never blocked. Timeout only
-  // affects observability ("did the LLM finish before we gave up").
-  const timeoutMs = LLM_MODEL.startsWith("qwen2.5:1.5b") ? 5_000 : 30_000;
-  const prompt = [
-    "判断这一轮交互里有没有值得长期记忆的内容。",
-    "",
-    "===== 应该 remember 的（true）=====",
-    "",
-    "A. 用户偏好 / 纠错 / 抱怨（type=user）",
-    "  例：「我更喜欢 ripgrep」「不对，应该用 git revert」「抱歉我刚才说错了」",
-    "  → true",
-    "",
-    "B. 工具拿回新事实，跨会话有复用价值（type=reference）",
-    "  例：agent 读了一篇文章，要点是「Rust 借用检查在编译期保证内存安全」",
-    "  → true",
-    "",
-    "C. agent 自己做了非显然决策 / 反思（type=agent-feedback 或 project）",
-    "  例：「决定用 polling 而不是 webhook，因为 webhook 需要公网 IP」",
-    "  → true",
-    "",
-    "===== 一律 false =====",
-    "",
-    "D. 状态汇报 / 进度更新（跑完了 / 通过了 / OK 我去做）",
-    "E. 一次性查询的答案（今天天气 / 现在几点 — 明天就不准了）",
-    "F. 闲聊 / 寒暄（你好 / 谢谢 / 天气不错）",
-    "G. 普通工作流（用户给任务 + agent 完成，没新规则没新事实）",
-    "",
-    "type: user | project | agent-feedback | reference",
-    "tier: L1（仅持久用户偏好，保守用）| L2（默认）",
-    "",
-    `=== user prompt ===\n${truncateForLLM(input.userPrompt, 800)}`,
-    "",
-    `=== agent messages ===\n${truncateForLLM(input.agentMessagesText, 3000)}`,
-    "",
-    '输出 JSON: {"shouldRemember": bool, "type": "user|project|agent-feedback|reference", "primary": "一句话自包含浓缩", "tier": "L1|L2", "suggestedTags": ["1-3个topic词"]}',
-  ].join("\n");
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        format: "json",
-        messages: [{ role: "user", content: prompt }],
-        stream: false,
-        // qwen3 family enables chain-of-thought ("thinking") by default, which
-        // adds 10-50s of latency per call. For our pure-classification task
-        // (return one JSON object) the thinking is wasted compute. Disabling
-        // brings qwen3:4b from >60s down to ~3s on commodity hardware.
-        // Non-qwen3 models ignore this field, so it's safe to always send.
-        think: false,
-        // Keep the model resident in Ollama for 30 min after this call so the
-        // next agent_end doesn't pay the cold-start penalty. Idle eviction
-        // still happens once unused beyond keep_alive.
-        keep_alive: "30m",
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!resp.ok) return null;
-    const data = await resp.json() as { message?: { content?: string } };
-    const raw = (data.message?.content ?? "").trim();
-
-    try {
-      const json = JSON.parse(raw);
-      const shouldRemember = json.shouldRemember === true;
-      if (!shouldRemember) return { shouldRemember: false, type: "reference", primary: "", tier: "L2", suggestedTags: [] };
-
-      const type = (WORTH_REMEMBERING_SUBJECTS as readonly string[]).includes(json.type) ? json.type : "reference";
-      const tier = json.tier === "L1" ? "L1" : "L2";
-      const primary = typeof json.primary === "string" ? json.primary.trim() : "";
-      if (!primary) return null;
-      const suggestedTags = Array.isArray(json.suggestedTags)
-        ? json.suggestedTags.filter((t: unknown) => typeof t === "string").slice(0, 3)
-        : [];
-      return { shouldRemember: true, type, primary, tier, suggestedTags };
-    } catch {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-// --- Turn-state cache (per pi process, single agent loop at a time) ---
-//
-// Only the user prompt is cached across hooks. We deliberately do NOT cache
-// tool results: pi-mind's own tools (remember_this, mark_daily_audit_complete)
-// would otherwise feed their results back into pi-mind's detector, and the
-// agent's message already summarizes whatever external tools returned.
-//   before_agent_start → sets lastUserPrompt
-//   agent_end          → consumes it, then resets
+// before_agent_start captures the user prompt into this module-level cache so
+// `remember_this`, called later in the same turn, can attach it as context
+// when saving a memory entry. The cache is overwritten each turn; multiple
+// `remember_this` calls within a turn all see the same prompt.
 let lastUserPrompt = "";
-
-// Set true when remember_this successfully writes a memory in the current
-// agent loop. agent_end consults this flag and, if set, skips the
-// worth-remembering detector entirely — the agent already made an explicit
-// save decision; running the auto detector would just produce a noisier
-// duplicate of the same conceptual memory under a different primary hash.
-// Reset at agent_end (covers both skip and normal paths).
-let explicitSaveFiredThisAgentLoop = false;
-
-function serializeAgentMessages(messages: unknown[]): string {
-  return messages
-    .map((m) => {
-      if (typeof m === "object" && m !== null) {
-        const msg = m as { role?: string; content?: unknown };
-        const role = msg.role ?? "?";
-        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
-        return `[${role}] ${content}`;
-      }
-      return String(m);
-    })
-    .join("\n")
-    .slice(0, 4000);
-}
 
 // --- Turn counter for session archival ---
 
@@ -611,8 +460,9 @@ export default function memExtension(pi: ExtensionAPI) {
       "  - Anything you can re-derive from current code / context",
       "  - Content already discussed earlier in this conversation",
       "",
-      "A worth-remembering detector runs automatically at turn end as backup.",
-      "When in doubt, do NOT call — explicit save is for high-signal moments only.",
+      "There is NO background auto-capture. If you don't call remember_this",
+      "(or observe) for something, it isn't saved. When in doubt, prefer to",
+      "save explicit, high-signal items.",
       "",
       "Saved content must be SELF-CONTAINED: a future agent reading only this",
       "entry (without conversation history) should understand it.",
@@ -663,11 +513,6 @@ export default function memExtension(pi: ExtensionAPI) {
           source: "explicit",
           image: imageRelPath,
         });
-        // Only mark the explicit-save flag when the write actually landed.
-        // Dedup hits (fp=null) leave the flag false so the auto detector still
-        // runs as backup, which is the intent: an existing memory shouldn't
-        // suppress new ones from later in the same turn.
-        if (fp) explicitSaveFiredThisAgentLoop = true;
         const text = fp
           ? (imageRelPath ? `Saved to ${fp} (image at ${imageRelPath})` : `Saved to ${fp}`)
           : "Skipped (duplicate of existing memory)";
@@ -741,9 +586,9 @@ export default function memExtension(pi: ExtensionAPI) {
       "  - A tool result hinted at something worth follow-up later",
       "",
       "Don't call for status updates, task progress, or anything already",
-      "covered by remember_this (concrete facts) or worth-remembering's",
-      "auto-detection. Observations are intentionally lossy — wiki-lint /",
-      "daily-audit may later promote recurring observations to knowledge.",
+      "covered by remember_this (concrete facts). Observations are",
+      "intentionally lossy — knowledge-lint / daily-audit may later promote",
+      "recurring observations to knowledge.",
     ].join("\n"),
     parameters: {
       type: "object",
@@ -805,49 +650,10 @@ export default function memExtension(pi: ExtensionAPI) {
     }
   });
 
-  // agent_end: run worth-remembering detection over the full turn.
-  // Skips entirely if agent already made an explicit save via remember_this
-  // in this loop (the explicit decision is canonical for the turn).
-  // Otherwise: snapshot userPrompt + agent messages, reset cache, run
-  // detection async against the snapshot.
-  pi.on("agent_end", (event) => {
-    if (explicitSaveFiredThisAgentLoop) {
-      logMaintenance("worth-remembering-skipped", { reason: "explicit-save" });
-      explicitSaveFiredThisAgentLoop = false;
-      lastUserPrompt = "";
-      return;
-    }
-
-    const messages = (event as { messages?: unknown[] }).messages ?? [];
-    const snapshot = {
-      userPrompt: lastUserPrompt,
-      agentMessagesText: serializeAgentMessages(messages),
-    };
-    lastUserPrompt = "";
-
-    if (!snapshot.userPrompt.trim()) return;
-
-    detectWorthRemembering(snapshot).then(async (result) => {
-      logMaintenance("worth-remembering-llm", {
-        shouldRemember: result?.shouldRemember ?? null,
-        type: result?.type,
-      });
-      if (!result?.shouldRemember) return;
-      try {
-        const fp = await getCore().saveMemory({
-          type: result.type,
-          primary: result.primary,
-          context: { userPrompt: snapshot.userPrompt },
-          tier: result.tier,
-          tags: result.suggestedTags,
-          source: "worth-remembering",
-        });
-        if (fp) logMaintenance("worth-remembering-saved", { file: fp });
-      } catch (e) {
-        logMaintenance("worth-remembering-error", { error: String(e) });
-      }
-    }).catch(() => { /* silent — Ollama unavailable is non-fatal */ });
-  });
+  // (No agent_end handler. Memory writes are passive — explicit only via
+  // remember_this / observe. The "memory is passive" principle in
+  // AGENTS.md "Design Principles" replaced the prior worth-remembering-llm
+  // auto-capture path in 0.6.0.)
 
   // Inject memories before agent starts processing
   pi.on("before_agent_start", async (event) => {
