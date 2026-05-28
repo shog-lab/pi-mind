@@ -19,6 +19,76 @@ LongMemEval benchmark harness lives at `packages/core/eval/` (was its own worksp
 
 Publishing is **manual per-package**, no CI — see [[publish-flow]] memory.
 
+## Design Principles
+
+These principles define **what kinds of autonomy this ecosystem will and won't support**. They emerged from reading Mario Zechner's [Thoughts on slowing the fuck down](https://mariozechner.at/posts/2026-03-25-thoughts-on-slowing-the-fuck-down/) (pi-coding-agent's creator's manifesto against unbottlenecked agent loops) and re-auditing our own packages against it.
+
+### 1. Behavior-changing autonomy requires inline gate
+
+Agent actions that **require LLM judgment AND change future agent behavior** must propose-before-executing. The proposal happens in a visible turn; the actual side effect waits for explicit user approval (or surrogate approval — see principle 3).
+
+Includes:
+- Writing or updating skills (`create_skill` / `update_skill`)
+- Continuing autonomous multi-step loops past iteration 1
+
+Excludes (these may run silently):
+- Reading any state (memory injection, file reads, tool calls within a turn)
+- Mechanical state mutations driven by user-set policy (retention-based forget, session archive)
+- User-invoked CLI commands (`pi-mind-lint --apply`, etc.)
+
+### 2. Memory is passive
+
+Memory is a **dumb storage + smart retrieval** layer. It has no background curator, no autonomous "is this worth remembering?" judge.
+
+- **Writes** happen only via `remember_this` (agent explicitly calls in a visible turn) or manual file authorship.
+- **Reads** are smart: hybrid retrieval, relevance ranking, L1/L2 injection at agent_start.
+- **Forgets** are mechanical: retention policy you configured, not LLM-judged.
+- **No `worth-remembering-llm`-style auto-capture.** If nobody decided to remember it, it wasn't worth keeping.
+
+Why: a wrong memory entry is mostly noise (relevance-ranked retrieval filters it). A wrong skill is consistent wrong behavior. Memory tolerates errors; skills don't. So memory write can be less ceremonious — but it must still originate from a visible decision, not a background LLM.
+
+### 3. Bus is graduated-autonomy substrate
+
+`@shog-lab/pi-bus` is not (just) a messaging primitive. It enables **the same code to operate anywhere on a continuum**:
+
+```
+silent                  ──→   auto-approve keeper          (gives audit trail)
+                                                                  ↓
+                              prompted keeper (LLM judge)  (theatrical bottleneck — ok for low-stakes)
+                                                                  ↓
+                              human keeper (another terminal)  (real bottleneck)
+                                                                  ↓
+                              inline interactive (current pi)
+```
+
+Switching position on this continuum is configuration, not rewrite. A "memory keeper" or "skill reviewer" agent can sit between your work-pi and the persistent state, and the keeper can be auto-approving, LLM-judging, or human-watched — same protocol, different stance.
+
+**Caveat**: an auto-approve keeper is **structurally identical** to a background LLM judge, just with audit trail. It's OK as a deliberate fallback, but treat "auto-approve everywhere" as a code smell. The point of graduated autonomy is to let you slide toward review when stakes rise, not to dress up silent autonomy.
+
+### 4. Trigger chain must originate from user action
+
+The legality of a memory write or skill change is judged by the **start of its trigger chain**, not by which agent ultimately executes it.
+
+```
+✅ Legal:  user message  →  agent decides  →  (optionally bus → other agent)  →  remember_this
+❌ Illegal: agent_end hook  →  background LLM  →  silent write
+❌ Illegal: cron / timer  →  ...  →  state mutation
+```
+
+A `remember_this` call routed through three agents via bus is still legal **if the chain started with a user message**. A `remember_this` triggered by an `agent_end` background hook is not, even if it goes through a "keeper" agent first — the user never invited that decision.
+
+### How these principles map to current packages
+
+| Package | Alignment | Note |
+|---|---|---|
+| `pi-utils` | ✅ Pure infra | No autonomy concerns |
+| `pi-mind-core` memory (`remember_this`, retrieval, retention) | ✅ Per principle 2 | After removing `worth-remembering-llm` in 0.6.0 |
+| `pi-mind-core` skill-evolution | ✅ Per principle 1 | After replacing `write_skill` with ask-first `create_skill` + `update_skill` in 0.6.0 |
+| `pi-toolkit` (web-search / understand-image / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
+| `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
+| `pi-bus` | ✅ The substrate enabling principle 3 | — |
+| `pi-goals` (ralph) | ❌ Anti-pattern — being removed | Mario specifically called out "ralphing the loop". Bus + subagent + git can compose any ralph-style workflow without forcing the unattended loop. Deprecation pending. |
+
 ## Development Commands
 
 ```bash
