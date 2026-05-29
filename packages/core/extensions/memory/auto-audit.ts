@@ -1,8 +1,8 @@
 /**
- * Startup-triggered self-evolution: detect when daily-audit is overdue
+ * Startup-triggered self-evolution: detect when memory-audit is overdue
  * and inject a context note suggesting the agent run it.
  *
- * The hook does NOT run the audit itself — daily-audit is a skill executed
+ * The hook does NOT run the audit itself — memory-audit is a skill executed
  * by an LLM agent, not a sync TS function. The hook just signals overdue
  * status; the agent decides when to honor the suggestion (typically before
  * substantive work in the current session).
@@ -11,8 +11,10 @@
  *   $PI_MIND_DIR/raw/maintenance-log/last-audit.json
  *   { "lastRun": <ms epoch>, "summary": "<optional one-line>" }
  *
- * Mark-as-done is exposed as a tool the daily-audit skill calls at the end
- * of its workflow; that's the one and only writer of this file.
+ * Mark-as-done is exposed as a tool the memory-audit skill calls at the end
+ * of its workflow; that's the one and only writer of this file. The tool is
+ * named `mark_daily_audit_complete` for historical reasons (will be renamed
+ * `mark_memory_audit_complete` in a future breaking release).
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -140,7 +142,7 @@ export function renderAuditNotice(status: AuditStatus, tokenSummary?: TokenSumma
     );
   }
   lines.push(
-    "Suggest: run `use daily-audit skill` before substantive work in this session.",
+    "Suggest: run `use memory-audit skill` before substantive work in this session.",
     "When done, call mark_daily_audit_complete(summary?) to silence this notice for 24h.",
   );
   lines.push("</self-evolution>");

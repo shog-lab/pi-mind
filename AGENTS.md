@@ -136,7 +136,7 @@ Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.
 
 | Skill | Source dir | Purpose |
 |---|---|---|
-| `daily-audit` | `packages/core/skills/daily-audit/` | Memory hygiene audit loop. |
+| `memory-audit` | `packages/core/skills/memory-audit/` | Memory hygiene audit loop. |
 | `knowledge-lint` | `packages/core/skills/knowledge-lint/` | Schema validation + auto-fix for knowledge entries. (Was `wiki-lint` before 0.3.0.) |
 | `scheduling` | `packages/core/skills/scheduling/` | Cron setup helper. |
 | `define-skill` | `packages/core/skills/define-skill/` | Compose a brand-new skill via `write_skill`. |

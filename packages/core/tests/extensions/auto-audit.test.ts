@@ -97,7 +97,7 @@ describe("renderAuditNotice", () => {
     const notice = aa.renderAuditNotice({ overdue: true, hoursSinceLast: null });
     expect(notice).toContain("<self-evolution>");
     expect(notice).toContain("never run");
-    expect(notice).toContain("daily-audit skill");
+    expect(notice).toContain("memory-audit skill");
     expect(notice).toContain("mark_daily_audit_complete");
   });
 

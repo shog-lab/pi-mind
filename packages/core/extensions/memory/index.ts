@@ -198,8 +198,8 @@ function logMaintenance(action: string, detail: Record<string, unknown>): void {
  *   - Frontmatter: date + tags only
  *   - Body: the note itself
  *
- * wiki-lint / daily-audit periodically scan this directory and may surface
- * recurring observations for the agent to promote into knowledge/.
+ * knowledge-lint / memory-audit periodically scan this directory and may
+ * surface recurring observations for the agent to promote into knowledge/.
  */
 function saveObservation(piMindDir: string, note: string, tags: string[]): string {
   const obsDir = join(piMindDir, "raw", "observations");
@@ -431,13 +431,15 @@ export default function memExtension(pi: ExtensionAPI) {
 
   // Self-evolution startup hook: surface "audit overdue" status as a context note.
   // Agent decides when to honor — typically before substantive work in this session.
-  // The hook does NOT run the audit itself; daily-audit is an LLM-executed skill.
+  // The hook does NOT run the audit itself; memory-audit is an LLM-executed skill.
   // Caller signals completion via mark_daily_audit_complete tool below.
+  // (Tool name is historical — will be renamed mark_memory_audit_complete in a
+  // future breaking release to match the renamed skill.)
   pi.registerTool({
     name: "mark_daily_audit_complete",
-    label: "Mark Daily Audit Complete",
+    label: "Mark Memory Audit Complete",
     description:
-      "Call this once after running the daily-audit skill end-to-end. Updates the audit timestamp so the overdue notice is silenced for the next 24 hours. Pass an optional one-line summary that will surface in the next audit notice.",
+      "Call this once after running the memory-audit skill end-to-end. Updates the audit timestamp so the overdue notice is silenced for the next 24 hours. Pass an optional one-line summary that will surface in the next audit notice. (Tool name is mark_daily_audit_complete for historical reasons — skill was renamed daily-audit → memory-audit; tool will follow in next breaking release.)",
     parameters: { type: "object", properties: { summary: { type: "string", description: "Optional one-line summary of audit findings" } } },
     async execute(_id: string, params: { summary?: string }) {
       markAuditDone(PI_MIND_DIR, params.summary);
@@ -587,7 +589,7 @@ export default function memExtension(pi: ExtensionAPI) {
       "",
       "Don't call for status updates, task progress, or anything already",
       "covered by remember_this (concrete facts). Observations are",
-      "intentionally lossy — knowledge-lint / daily-audit may later promote",
+      "intentionally lossy — knowledge-lint / memory-audit may later promote",
       "recurring observations to knowledge.",
     ].join("\n"),
     parameters: {

@@ -2,7 +2,7 @@
 
 **Give pi a mind: portable memory and self-evolution as a drop-in [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent) extension.**
 
-A pi extension package that turns any repo into the home of a persistent, self-improving agent. Memory survives across sessions, accumulates over time, and the agent maintains its own knowledge through a daily audit loop.
+A pi extension package that turns any repo into the home of a persistent, self-improving agent. Memory survives across sessions, accumulates over time, and the agent maintains its own knowledge through a periodic memory-audit.
 
 Inspired by [Karpathy's LLM Wiki](https://github.com/luotwo/llm-wiki) — knowledge as flat markdown the LLM curates itself.
 
@@ -59,10 +59,10 @@ npx pi-mind-lint --prune --apply  # really delete stale memories + raw artifacts
 
 The forget mechanism runs automatically every 50 writes (see [Self-evolution](#self-evolution)); the manual `--prune` is for emergency cleanup or audit.
 
-Optional cron for daily-audit (no cron is required; the extension is daemon-free):
+Optional cron for memory-audit (no cron is required; the extension is daemon-free):
 
 ```cron
-0 22 * * * cd /path/to/repo && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
+0 22 * * * cd /path/to/repo && pi -p "use memory-audit skill" >> .pi-mind/cron.log 2>&1
 ```
 
 ## Frontmatter schema
@@ -123,7 +123,7 @@ Configure via a `pi-mind-config.json` in `$PI_MIND_DIR/` (auto-loaded). Defaults
 Three mechanisms keep memory healthy. None require a daemon — pi-mind has no background process; everything piggybacks on the natural rhythm of agent interaction.
 
 - **`knowledge-lint`** — validates frontmatter, finds duplicates, flags stale entries. With `--fix` it auto-migrates legacy fields. With `--prune` it deletes age-expired memories + raw artifacts (`--prune --apply` to actually delete; default is dry-run).
-- **`daily-audit`** — agent-executed skill: scans the maintenance log, samples LLM decisions, surfaces problems. Triggered by an "audit overdue" notice the extension injects into the agent's context at `before_agent_start`; the agent decides when to honor it.
+- **`memory-audit`** — agent-executed skill: scans the maintenance log, samples LLM decisions, surfaces problems. Triggered by an "audit overdue" notice the extension injects into the agent's context at `before_agent_start`; the agent decides when to honor it.
 - **Auto-forget** — `saveMemory` increments a persistent counter (`raw/maintenance-log/last-forget.json`); every 50 writes the extension runs `forgetOldMemories()` synchronously and resets. No cron needed.
 
 Retention policy (`lib/forget.ts`):
@@ -137,10 +137,10 @@ Retention policy (`lib/forget.ts`):
 | `raw/sessions/<cwd>/*.jsonl` | mtime > 14 days; empty cwd-dirs pruned |
 | `raw/maintenance-log/*.jsonl` | mtime > 30 days (markers preserved) |
 
-Optional cron — only if you want daily-audit to fire even without an interactive session:
+Optional cron — only if you want memory-audit to fire even without an interactive session:
 
 ```cron
-0 22 * * * cd /repo && pi -p "use daily-audit skill" >> .pi-mind/cron.log 2>&1
+0 22 * * * cd /repo && pi -p "use memory-audit skill" >> .pi-mind/cron.log 2>&1
 ```
 
 ## Composing with other pi packages
@@ -155,7 +155,7 @@ pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Ot
 └── browser/          pi-chrome: browser task outcomes (if installed)
 ```
 
-`daily-audit` scans the entire `raw/` tree, so anything any package writes there gets reviewed automatically. Convention: each package writes only to its own subdirectory and uses the same frontmatter schema. See [`pi-chrome`](https://github.com/shog-lab/pi-chrome) for an example sibling package.
+`memory-audit` scans the entire `raw/` tree, so anything any package writes there gets reviewed automatically. Convention: each package writes only to its own subdirectory and uses the same frontmatter schema. See [`pi-chrome`](https://github.com/shog-lab/pi-chrome) for an example sibling package.
 
 ## Benchmarks
 
@@ -207,7 +207,7 @@ Key implementation notes:
 
 ## Status
 
-Early. The core (memory model, schema, lint, daily-audit, forget) is in active use; APIs may evolve. Tests cover MemoryCore, KnowledgeGraph, forget mechanism, session-archive filter, and extension behavior (115 total, all passing).
+Early. The core (memory model, schema, lint, memory-audit, forget) is in active use; APIs may evolve. Tests cover MemoryCore, KnowledgeGraph, forget mechanism, session-archive filter, and extension behavior (115 total, all passing).
 
 Roadmap (no fixed dates):
 
