@@ -22,7 +22,7 @@ Publishing is **manual per-package**, no CI — see [[publish-flow]] memory.
 
 ## Design Principles
 
-These principles define **what kinds of autonomy this ecosystem will and won't support**. They emerged from reading Mario Zechner's [Thoughts on slowing the fuck down](https://mariozechner.at/posts/2026-03-25-thoughts-on-slowing-the-fuck-down/) (pi-coding-agent's creator's manifesto against unbottlenecked agent loops) and re-auditing our own packages against it.
+These principles define **what kinds of autonomy this ecosystem will and won't support**. They emerged from auditing our own packages and noticing that several patterns — unbottlenecked autonomous loops, background curator LLMs writing prescriptive memory, agents self-modifying their own behavior — produce results we don't trust. Codifying the constraints up front lets future feature decisions be made by reference to the principles rather than re-litigated.
 
 ### 1. Behavior-changing autonomy requires inline gate
 
