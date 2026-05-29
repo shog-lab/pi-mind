@@ -88,7 +88,7 @@ A `remember_this` call routed through three agents via bus is still legal **if t
 | `pi-toolkit` (web-search / understand-image / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
 | `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
 | `pi-bus` | ✅ The substrate enabling principle 3 | — |
-| ~~`pi-goals` (ralph)~~ | 🗑️ **Removed 2026-05-28** | Was an anti-pattern (autonomous PRD loop with theatrical self-verify). Replaced by composing `pi-bus` + `pi-subagent` + git worktree with an in-the-loop human or keeper agent. Last release `0.5.1` remains on npm as deprecated, pinnable as fallback. |
+| ~~`pi-goals` (ralph)~~ | 🗑️ **Removed 2026-05-28** | Autonomous orchestrated workflows are platform-level work (now exemplified by Claude Code's agent teams + dynamic workflows). At the extension layer, the same workflows are better composed *visibly* via `pi-bus` (peer mesh) + `pi-subagent` (call tree) + git worktree, with the user in the loop per spawn. Same capability surface, opposite transparency posture. Last release `0.5.1` remains on npm as deprecated, pinnable as fallback. |
 
 ## Development Commands
 
