@@ -1,0 +1,55 @@
+{
+  "name": "@shog-lab/pi-mind-core",
+  "version": "0.7.1",
+  "description": "Give pi a mind: portable, self-maintaining memory for pi-coding-agent. Memory is passive — writes are explicit (remember_this / observe), retrieval is hybrid (vector + FTS5 + KG). Ships ask-first skill authoring (create_skill / update_skill).",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shog-lab/pi-mind.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/core",
+  "bugs": "https://github.com/shog-lab/pi-mind/issues",
+  "scripts": {
+    "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
+    "lint:knowledge": "tsx scripts/knowledge-lint.ts",
+    "test": "vitest run",
+    "prepare": "npm run build",
+    "postinstall": "node bin/init.js"
+  },
+  "bin": {
+    "pi-mind-init": "bin/init.js",
+    "pi-mind-lint": "bin/lint.js"
+  },
+  "files": [
+    "dist/**",
+    "skills/**",
+    "bin/**/*.js",
+    "system-prompt.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "@shog-lab/pi-utils": "*",
+    "proper-lockfile": "^4.1.2",
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

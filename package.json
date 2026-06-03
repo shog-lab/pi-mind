@@ -1,0 +1,23 @@
+{
+  "name": "pi-mind-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo housing pi-mind and pi-toolkit — agent capabilities for pi-coding-agent.",
+  "type": "module",
+  "license": "MIT",
+  "workspaces": [
+    "packages/utils",
+    "packages/core",
+    "packages/toolkit",
+    "packages/bus",
+    "packages/subagent"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

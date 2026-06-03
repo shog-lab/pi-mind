@@ -1,0 +1,27 @@
+node_modules/
+*.log
+.DS_Store
+.env
+*.tgz
+
+# tsc build output now lives under dist/ (no in-place compile)
+**/dist/
+
+# Local DBs and locks
+*.db
+*.db-shm
+*.db-wal
+.locks/
+.pi/
+.pi-mind/
+.pi-goals/
+.ralph-worktrees/
+
+# Local editor / AI-assistant configs (per-developer, not project state)
+.claude/
+.cursor/
+.vscode/
+personas/
+
+# Long-form drafts — kept local, not version-controlled
+posts/

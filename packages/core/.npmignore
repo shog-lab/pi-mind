@@ -1,0 +1,11 @@
+# Exclude TypeScript source so pi loads compiled .js
+# (.d.ts type declarations are still shipped — re-included by negation)
+*.ts
+!*.d.ts
+*.ts.map
+
+# Dev tooling not needed at runtime
+tests/
+vitest.config.ts
+tsconfig.json
+.gitignore

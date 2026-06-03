@@ -1,0 +1,11 @@
+{
+  "name": "@shog-lab/pi-bus-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Inter-pi messaging primitive (extension).",
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "@shog-lab/pi-subagent",
+  "version": "0.1.0",
+  "description": "Spawn focused sub-pi processes from inside pi. Registers a `spawn_subagent` tool: agent calls it with cwd + prompt, gets back the sub-agent's response. Fire-and-forget child pi via spawnPi. Previously bundled in @shog-lab/pi-toolkit 0.2.x.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shog-lab/pi-mind.git",
+    "directory": "packages/subagent"
+  },
+  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/subagent",
+  "bugs": "https://github.com/shog-lab/pi-mind/issues",
+  "scripts": {
+    "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepare": "npm run build",
+    "postinstall": "node bin/init.js"
+  },
+  "bin": {
+    "pi-subagent-init": "bin/init.js"
+  },
+  "files": [
+    "dist/**",
+    "bin/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "@shog-lab/pi-utils": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
