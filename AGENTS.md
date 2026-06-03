@@ -14,7 +14,7 @@ Guide for AI agents working in this repository.
 | `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
 | `packages/subagent` | `@shog-lab/pi-subagent` | published | Single `spawn_subagent` tool — fire-and-forget child pi via spawnPi. Extracted from pi-toolkit 0.3.0. |
 
-LongMemEval benchmark harness lives at `packages/core/eval/` (was its own workspace `packages/eval/` through 2026-05-26). Internal dev tooling; not published.
+LongMemEval benchmark harness lives at `packages/core/eval/` (was its own workspace `packages/eval/` through 2026-05-26). Internal dev tooling; not published. Run with `npm run eval --workspace=packages/core -- <args>` (the harness is run via `tsx`, NOT compiled into the package's `dist/` — `tsconfig.json` excludes `eval/**/*` from the published build).
 
 `@shog-lab/pi-goals` (ralph) was published through 0.5.1 then **deprecated + removed from the monorepo on 2026-05-28** (see Design Principles below). Published versions remain installable from npm with a deprecation warning; pin `@shog-lab/pi-goals@0.5.1` if you depend on the old behavior.
 
@@ -88,7 +88,7 @@ A `remember_this` call routed through three agents via bus is still legal **if t
 | `pi-toolkit` (web-search / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
 | `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
 | `pi-bus` | ✅ The substrate enabling principle 3 | — |
-| ~~`pi-goals` (ralph)~~ | 🗑️ **Removed 2026-05-28** | Autonomous orchestrated workflows are platform-level work (now exemplified by Claude Code's agent teams + dynamic workflows). At the extension layer, the same workflows are better composed *visibly* via `pi-bus` (peer mesh) + `pi-subagent` (call tree) + git worktree, with the user in the loop per spawn. Same capability surface, opposite transparency posture. Last release `0.5.1` remains on npm as deprecated, pinnable as fallback. |
+| ~~`pi-goals` (ralph)~~ | 🗑️ **Removed 2026-05-28** | Autonomous orchestrated workflows are platform-level work. At the extension layer, the same workflows are better composed *visibly* via `pi-bus` (peer mesh) + `pi-subagent` (call tree) + git worktree, with the user in the loop per spawn. Same capability surface, opposite transparency posture. Last release `0.5.1` remains on npm as deprecated, pinnable as fallback. |
 
 ## Development Commands
 

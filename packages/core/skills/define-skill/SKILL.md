@@ -21,7 +21,7 @@ Good skills are:
 
 ## Anti-patterns
 
-- ❌ Restating things that are in the user's CLAUDE.md / system-prompt — skills are for non-default workflows, not the basics
+- ❌ Restating things that are in the user's AGENTS.md / system-prompt — skills are for non-default workflows, not the basics
 - ❌ Embedding company / secret values (use env vars or just reference where they live)
 - ❌ "Step 1: think about the problem" — agents already do this; skip filler
 - ❌ Bullet lists without verb–object form ("Authentication" instead of "Verify the user is logged in via …")

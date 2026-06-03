@@ -104,7 +104,9 @@ function validateFile(filePath: string, content: string): Issue[] {
   }
 
   if (meta.source) {
-    issues.push({ file: fileName, severity: "warning", message: `legacy 'source' field (should be 'type')` });
+    // 'source' is a legitimate optional metadata field written by saveMemory
+    // (e.g. "explicit", "compaction", "observe") — informational, not schema.
+    // No warning. See README "Frontmatter schema" table.
   }
 
   if (tags) {
@@ -193,12 +195,10 @@ function fixFile(filePath: string): string[] {
     modified = true;
   }
 
-  // Remove legacy source field
-  if (meta.source) {
-    delete meta.source;
-    changes.push(`source: removed (legacy)`);
-    modified = true;
-  }
+  // Note: 'source' is now legitimate metadata (informational: which writer
+  // produced the entry — "explicit" / "compaction" / "observe" / etc.).
+  // We no longer auto-remove it. The migration-from-legacy case above
+  // (type missing + source looks like a subject) still handles pre-0.6 data.
 
   // Clean legacy tags
   const tags = meta.tags;

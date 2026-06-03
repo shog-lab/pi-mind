@@ -34,7 +34,7 @@ function writeWikiFile(
   content: string,
   meta?: Record<string, string | string[]>,
 ) {
-  const fullMeta = { date: '2026-04-15T00:00:00Z', type: 'note', ...meta };
+  const fullMeta = { date: '2026-04-15T00:00:00Z', type: 'reference', ...meta };
   const raw = serializeFrontmatter(fullMeta as any, content);
   const filePath = path.join(tmpDir, 'knowledge', name);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -184,7 +184,7 @@ describe('MemoryCore', () => {
     it('indexes and searches wiki files', async () => {
       writeWikiFile('test-search.md', 'Agent memory architecture overview');
       await mc.syncIndex();
-      const results = mc.searchFTS5('memory architecture');
+      const results = await mc.searchFTS5('memory architecture');
       expect(results.length).toBeGreaterThanOrEqual(1);
       expect(results[0].entry.content).toContain('memory');
     });
@@ -197,25 +197,25 @@ describe('MemoryCore', () => {
         '---\ndate: 2026-01-01\ntype: note\n---\n\nOriginal source material',
       );
       await mc.syncIndex();
-      const results = mc.searchFTS5('source material');
+      const results = await mc.searchFTS5('source material');
       expect(results.length).toBeGreaterThanOrEqual(1);
     });
 
     it('removes deleted files from index', async () => {
       const fp = writeWikiFile('to-delete.md', 'xylophone zebra unique phrase');
       await mc.syncIndex();
-      expect(mc.searchFTS5('xylophone zebra').length).toBeGreaterThanOrEqual(1);
+      expect((await mc.searchFTS5('xylophone zebra')).length).toBeGreaterThanOrEqual(1);
 
       fs.unlinkSync(fp);
       await mc.syncIndex();
-      expect(mc.searchFTS5('xylophone zebra').length).toBe(0);
+      expect((await mc.searchFTS5('xylophone zebra')).length).toBe(0);
     });
 
     it('filters stopwords', async () => {
       writeWikiFile('stopword-test.md', 'the quick brown fox');
       await mc.syncIndex();
       // "the" is a stopword, should still find by "quick" or "brown"
-      const results = mc.searchFTS5('quick brown');
+      const results = await mc.searchFTS5('quick brown');
       expect(results.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -228,7 +228,7 @@ describe('MemoryCore', () => {
         type: 'reference',
       });
       await mc.syncIndex();
-      const results = mc.searchFTS5('dark mode');
+      const results = await mc.searchFTS5('dark mode');
       expect(results.length).toBeGreaterThanOrEqual(2);
       const userResult = results.find((r) => r.entry.type === 'user');
       const refResult = results.find((r) => r.entry.type === 'reference');
@@ -268,7 +268,7 @@ describe('MemoryCore', () => {
       const healed = fs.readFileSync(fp, 'utf-8');
       expect(healed.startsWith('---')).toBe(true);
       const { meta } = parseFrontmatter(healed);
-      expect(meta.type).toBe('note');
+      expect(meta.type).toBe('reference');
       expect(meta.tags).toContain('auto-healed');
     });
 
@@ -281,7 +281,7 @@ describe('MemoryCore', () => {
       await mc.syncIndex();
       const healed = fs.readFileSync(fp, 'utf-8');
       const { meta } = parseFrontmatter(healed);
-      expect(meta.type).toBe('note');
+      expect(meta.type).toBe('reference');
       expect(meta.tier).toBe('L2'); // non-L1 type defaults to L2
     });
 

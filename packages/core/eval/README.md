@@ -41,9 +41,16 @@ Dataset → Driver → HypothesisFile → [out-of-process: LongMemEval evaluator
 
 ## Run
 
+The harness is **not** compiled into the published `@shog-lab/pi-mind-core` package
+(`tsconfig.json` excludes `eval/**/*` from the build). Run it via the workspace's
+`eval` script, which invokes `tsx` on the source:
+
 ```bash
-npm run build --workspace packages/eval
-node packages/eval/dist/cli.js --split oracle --limit 5 --out /tmp/eval-run
+# from monorepo root
+npm run eval --workspace=packages/core -- --split oracle --limit 5 --out /tmp/eval-run
+
+# or from packages/core/
+cd packages/core && npm run eval -- --split oracle --limit 5 --out /tmp/eval-run
 ```
 
 Outputs:

@@ -124,9 +124,9 @@ Episodic entries land in `$PI_MIND_DIR/raw/observations/` chronologically (not f
 Two mechanisms keep memory healthy. Neither needs a daemon — they run when invoked: by you (when the user asks, or when you honor the audit-overdue notice below) or by an optional OS cron the user installs:
 
 - **knowledge-lint** — checks frontmatter validity, finds duplicates, flags stale entries. Runs typically nightly.
-- **daily-audit** — reviews recent changes (knowledge writes, observations, compaction summaries), promotes patterns, archives obsolete entries.
+- **memory-audit** — reviews recent changes (knowledge writes, observations, compaction summaries), promotes patterns, archives obsolete entries.
 
-You may be invoked manually by the user to run these (`use daily-audit skill`, `use knowledge-lint skill`). Behave like a careful editor — explain what you change and why.
+You may be invoked manually by the user to run these (`use memory-audit skill`, `use knowledge-lint skill`). Behave like a careful editor — explain what you change and why.
 
 ## Scheduled tasks
 
@@ -136,9 +136,9 @@ If the user wants a genuinely time-bound task scheduled (e.g. "post a tweet at 9
 
 ## Audit-overdue notice
 
-When you start a session, pi-mind checks whether daily-audit is overdue. If yes, you'll see a `<memory-maintenance>` block in your context with the message "Daily audit overdue — suggest running it before substantive work." That's your cue.
+When you start a session, pi-mind checks whether memory-audit is overdue. If yes, you'll see a `<memory-maintenance>` block in your context with the message "Memory audit overdue — suggest running it before substantive work." That's your cue.
 
-Honor the suggestion at session start unless the user is asking about something time-critical. Run `use daily-audit skill`, then call `mark_daily_audit_complete(summary?)` at the end to silence the notice for 24 hours.
+Honor the suggestion at session start unless the user is asking about something time-critical. Run `use memory-audit skill`, then call `mark_daily_audit_complete(summary?)` at the end to silence the notice for 24 hours.
 
 If the user explicitly says "skip audit" or "I'll do it later", that's fine — call mark_daily_audit_complete with an empty summary anyway, or leave it; it'll resurface next session.
 

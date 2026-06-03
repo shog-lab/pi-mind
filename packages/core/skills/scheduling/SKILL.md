@@ -11,7 +11,7 @@ tools in pi-mind. Two reasons:
 1. **macOS Authorization model**: the OS prompts the user's terminal app for
    broad "manage your computer" rights when crontab is invoked. Many users
    reasonably refuse this prompt.
-2. **Memory maintenance doesn't need cron**: pi-mind's daily-audit and knowledge-lint
+2. **Memory maintenance doesn't need cron**: pi-mind's memory-audit and knowledge-lint
    are auto-triggered when you start a pi session and they're overdue (see
    the `<memory-maintenance>` context block). No external scheduler required.
 
@@ -117,7 +117,7 @@ Tell them:
 - ❌ Try to write to user's crontab via Bash (`echo ... | crontab -`) — this triggers the macOS prompt and bypasses informed consent
 - ❌ Try to write a launchd plist via Bash — same trust principle; user should see and place it themselves
 - ❌ Suggest a long-running daemon (pm2, forever) when cron/launchd is sufficient
-- ❌ Tell the user to "schedule daily-audit" — it auto-triggers
+- ❌ Tell the user to "schedule memory-audit" — it auto-triggers
 
 ## Verifying it ran
 

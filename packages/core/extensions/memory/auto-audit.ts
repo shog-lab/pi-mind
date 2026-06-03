@@ -126,10 +126,10 @@ export function renderAuditNotice(status: AuditStatus, tokenSummary?: TokenSumma
   if (!status.overdue) return null;
   const lines = ["<memory-maintenance>"];
   if (status.hoursSinceLast === null) {
-    lines.push("Daily audit has never run in this repo.");
+    lines.push("Memory audit has never run in this repo.");
   } else {
     const hrs = Math.round(status.hoursSinceLast);
-    lines.push(`Daily audit last ran ${hrs}h ago — overdue.`);
+    lines.push(`Memory audit last ran ${hrs}h ago — overdue.`);
     if (status.lastSummary) {
       lines.push(`Last audit summary: ${status.lastSummary}`);
     }

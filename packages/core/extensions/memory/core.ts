@@ -20,9 +20,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { join, relative, basename } from "node:path";
 import Database from "better-sqlite3";
-import { resolvePiMindDir } from "@shog-lab/pi-utils";
 import { KnowledgeGraph } from "./knowledge-graph.js";
 import { LEGACY_L1_TYPES, Subject, Tier } from "../../lib/schema.js";
 import { bumpAndMaybeForget } from "../../lib/forget.js";
@@ -398,7 +397,7 @@ export class MemoryCore {
         // Auto-heal: add missing frontmatter
         if (!rawContent.startsWith("---")) {
           const healed = serializeFrontmatter(
-            { date: new Date().toISOString(), type: "note", tier: "L2", tags: ["auto-healed"] },
+            { date: new Date().toISOString(), type: "reference", tier: "L2", tags: ["auto-healed"] },
             rawContent,
           );
           try { writeFileSync(filePath, healed, "utf-8"); } catch {}
@@ -410,7 +409,7 @@ export class MemoryCore {
         // Auto-heal: add missing type (subject axis) and tier (recall axis)
         let needsRewrite = false;
         if (!meta.type) {
-          meta.type = "note";
+          meta.type = "reference";
           needsRewrite = true;
         }
         if (!meta.tier) {
@@ -604,11 +603,17 @@ export class MemoryCore {
   }
 
   private async getEmbedding(text: string): Promise<Float64Array | null> {
+    // 5s timeout — Ollama is local-network-fast on a healthy box; >5s means
+    // the daemon is wedged, the model is loading, or the network is gone.
+    // In any of those cases we degrade to FTS5-only retrieval and warn, rather
+    // than letting `fetch` hang for minutes and blocking the whole turn.
+    const timeoutMs = 5_000;
     try {
       const resp = await fetch(`${this.ollamaUrl}/api/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: this.embedModel, input: text.slice(0, this.config.embedding.maxInputChars) }),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       if (!resp.ok) {
         console.warn(`[pi-mind] embedding HTTP ${resp.status} from ${this.ollamaUrl} (model: ${this.embedModel}). Vector search will not work for new entries until this is fixed.`);
@@ -621,10 +626,16 @@ export class MemoryCore {
       }
       return new Float64Array(data.embeddings[0]);
     } catch (e) {
-      // Network unreachable, Ollama down, fetch aborted, JSON parse failure.
+      // Network unreachable, Ollama down, fetch aborted, timeout, JSON parse failure.
       // Previously caught silently — every new memory entry then went un-embedded
       // and vector search degraded to FTS5-only without anyone knowing.
-      console.warn(`[pi-mind] embedding call failed: ${e instanceof Error ? e.message : String(e)}. Vector search degraded.`);
+      const msg = e instanceof Error ? e.message : String(e);
+      const isTimeout = e instanceof DOMException && e.name === "TimeoutError";
+      if (isTimeout) {
+        console.warn(`[pi-mind] embedding timed out after ${timeoutMs}ms from ${this.ollamaUrl} (model: ${this.embedModel}). Vector search degraded to FTS5.`);
+      } else {
+        console.warn(`[pi-mind] embedding call failed: ${msg}. Vector search degraded.`);
+      }
       return null;
     }
   }
@@ -703,9 +714,13 @@ export class MemoryCore {
 
   // --- FTS5 Search ---
 
-  searchFTS5(query: string): SearchResult[] {
+  async searchFTS5(query: string): Promise<SearchResult[]> {
     if (!query.trim()) return [];
-    this.syncIndex();
+    // Awaited — syncIndex is async. Without await, fresh writes (e.g.
+    // remember_this in this same turn) wouldn't be visible to FTS5 search,
+    // because the fire-and-forget Promise would not have completed before
+    // we run the FTS5 query below.
+    await this.syncIndex();
 
     const terms = query.toLowerCase()
       .split(/[\s,.\-:;!?()[\]{}"'`#*_/\\|@&=+<>]+/)
@@ -959,7 +974,7 @@ export class MemoryCore {
     await this.flushEmbeddings();
     let searchResults = await this.searchVector(query);
     if (searchResults.length === 0) {
-      searchResults = this.searchFTS5(query);
+      searchResults = await this.searchFTS5(query);
     }
     searchResults = searchResults.filter((r) => !l1Paths.has(r.entry.filePath));
 
@@ -1028,10 +1043,16 @@ export class MemoryCore {
 
 // --- Group-wide lock for multi-pi concurrent write safety ---
 
-const LOCK_DIR = join(resolvePiMindDir(), ".locks");
-
-// Reentrant lock: reference-counted per lock file.
+// Reentrant lock: reference-counted per groupDir.
 // safe-lockfile doesn't support reentry, so we track it ourselves.
+//
+// The lock file lives UNDER the groupDir itself (`<groupDir>/.locks/memory.lock`),
+// not under some module-load PI_MIND_DIR. This way:
+//   - two MemoryCore instances with different groupDir get independent locks
+//     (no cross-repo collision when two pi-mind repos run side-by-side);
+//   - tests can construct a temp groupDir and assert the lock file is local.
+//   - changing PI_MIND_DIR after module load (rare) doesn't strand the lock
+//     in an unrelated dir.
 const _locks = new Map<string, { count: number; release?: () => Promise<void> }>();
 
 /**
@@ -1044,9 +1065,10 @@ export async function withGroupLock<T>(
   groupDir: string,
   fn: () => Promise<T>,
 ): Promise<T> {
-  mkdirSync(LOCK_DIR, { recursive: true });
-  const lockFile = join(LOCK_DIR, `memory-${basename(groupDir)}.lock`);
-  const entry = _locks.get(lockFile) ?? { count: 0 };
+  const lockDir = join(groupDir, ".locks");
+  const lockFile = join(lockDir, "memory.lock");
+  mkdirSync(lockDir, { recursive: true });
+  const entry = _locks.get(groupDir) ?? { count: 0 };
 
   if (entry.count === 0) {
     const { lock } = await import("proper-lockfile");
@@ -1060,7 +1082,7 @@ export async function withGroupLock<T>(
   }
 
   entry.count++;
-  _locks.set(lockFile, entry);
+  _locks.set(groupDir, entry);
 
   try {
     return await fn();
@@ -1068,7 +1090,7 @@ export async function withGroupLock<T>(
     entry.count--;
     if (entry.count === 0) {
       await entry.release?.();
-      _locks.delete(lockFile);
+      _locks.delete(groupDir);
     }
   }
 }

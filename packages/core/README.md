@@ -88,6 +88,8 @@ We chose JWT over sessions because of mobile client constraints.
 | `tier` | yes | `L1` / `L2` | **recall axis** — `L1` always-injected, `L2` retrieved by relevance |
 | `tags` | no | `string[]` | free-form topic keywords (no subject/tier encoding) |
 | `triples` | no | `[[subject, predicate, object], ...]` | structured KG relations |
+| `source` | no | `explicit` / `compaction` / `observe` (or any string) | informational — which writer produced this entry. Set by `saveMemory`; not used by retrieval. |
+| `image` | no | relative path under `$PI_MIND_DIR` (e.g. `raw/images/abc.png`) | link to a stored image; rendered as `![](../<image>)` in the body. |
 
 The `type` × `tier` orthogonality is deliberate: any subject can be L1 (high-priority) or L2 (default). See [`lib/schema.ts`](lib/schema.ts) for the canonical definitions and `LEGACY_TYPE_MAP` for migration of old enums.
 
@@ -117,6 +119,30 @@ Each turn, the memory extension automatically injects relevant memory into the a
 - **Token budget** — total injection capped (default 4000) to leave room for actual reasoning
 
 Configure via a `pi-mind-config.json` in `$PI_MIND_DIR/` (auto-loaded). Defaults live in `extensions/memory/core.ts`.
+
+### Vector search requires Ollama
+
+L2 vector search is powered by the **`nomic-embed-text`** model served by a local
+[Ollama](https://ollama.com) daemon (default URL `http://localhost:11434`,
+configurable via `pi-mind-config.json` → `embedding.ollamaUrl`).
+
+- **If Ollama is running with `nomic-embed-text` pulled** — vector search works; new memory
+  entries are embedded as they're indexed.
+- **If Ollama is down / model not pulled / network unreachable** — vector search is
+  automatically **skipped** and retrieval falls back to FTS5 keyword search. A one-line
+  warning is logged to the agent's stderr (`[pi-mind] embedding call failed: ...`).
+  Retrieval still works; the agent just sees fewer topically-similar matches.
+- **Embedding requests are timed out at 5s** to avoid blocking the turn on a hung daemon.
+  On timeout the warning reads `[pi-mind] embedding timed out after 5000ms ...` and
+  FTS5 fallback kicks in.
+
+To install Ollama + the model:
+
+```bash
+# Install Ollama: see https://ollama.com/download
+ollama pull nomic-embed-text
+ollama serve   # if not already running as a service
+```
 
 ## Memory maintenance
 
@@ -159,11 +185,10 @@ pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Ot
 
 ## Benchmarks
 
-`eval/` ships the LongMemEval harness (datasets, pi-session driver, runner, report). Produces `hypothesis.jsonl` to feed into LongMemEval's official Python evaluator. See [`eval/README.md`](eval/README.md) for the out-of-process scoring pipeline.
+`eval/` ships the LongMemEval harness (datasets, pi-session driver, runner, report). Produces `hypothesis.jsonl` to feed into LongMemEval's official Python evaluator. **Internal dev tooling; NOT published** — `tsconfig.json` excludes `eval/**/*` from the build, so the harness is not in the npm tarball. Run via `tsx` directly, see [`eval/README.md`](eval/README.md) for the out-of-process scoring pipeline.
 
 ```bash
-npm run build --workspace=packages/core
-node packages/core/dist/eval/cli.js --split oracle --limit 5 --out /tmp/eval-run
+npm run eval --workspace=packages/core -- --split oracle --limit 5 --out /tmp/eval-run
 ```
 
 The harness bypasses any container or daemon — it imports `MemoryCore` directly. This makes the memory module independently testable.

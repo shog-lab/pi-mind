@@ -235,7 +235,7 @@ export default function memExtension(pi: ExtensionAPI) {
     parameters: { type: "object", properties: { summary: { type: "string", description: "Optional one-line summary of audit findings" } } },
     async execute(_id: string, params: { summary?: string }) {
       markAuditDone(PI_MIND_DIR, params.summary);
-      return { content: [{ type: "text" as const, text: "Daily audit marked complete. Next overdue check in 24h." }], details: {} };
+      return { content: [{ type: "text" as const, text: "Memory audit marked complete. Next overdue check in 24h." }], details: {} };
     },
   });
 
@@ -270,7 +270,7 @@ export default function memExtension(pi: ExtensionAPI) {
       type: "object",
       properties: {
         content: { type: "string", description: "Self-contained text to save. Do not reference conversation context with phrases like \"as I said\" or \"that thing above\". If saving alongside an image, include a description of the image." },
-        type: { type: "string", enum: ["user", "reference", "agent-feedback"], description: "Subject. Default: reference. Use 'user' for user preferences/constraints, 'agent-feedback' for your own decisions/insights." },
+        type: { type: "string", enum: ["user", "project", "reference", "agent-feedback"], description: "Subject. Default: reference. Use 'user' for user preferences/constraints, 'project' for project facts / architecture / decisions, 'agent-feedback' for your own decisions/insights." },
         tier: { type: "string", enum: ["L1", "L2"], description: "L1 = always injected next session (use sparingly, only for durable preferences). L2 = retrieved by relevance (default)." },
         tags: { type: "array", items: { type: "string" }, description: "1-3 topic keywords to aid future retrieval." },
         image_path: { type: "string", description: "Optional absolute path to an image (.png/.jpg/.jpeg/.gif/.webp). The file will be copied into pi-mind's content-addressed image store and linked from the memory entry. Files >2MB are auto-compressed; >20MB are rejected." },
