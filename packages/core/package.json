@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-mind-core",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Give pi a mind: portable, self-maintaining memory for pi-coding-agent. Memory is passive — writes are explicit (remember_this / observe), retrieval is hybrid (vector + FTS5 + KG). Ships ask-first skill authoring (create_skill / update_skill).",
   "type": "module",
   "license": "MIT",
