@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { VALID_SUBJECTS, VALID_TIERS, LEGACY_L1_TYPES, LEGACY_TYPE_MAP, normalizeSubject } from "../lib/schema.js";
+import { VALID_SUBJECTS, VALID_TIERS, LEGACY_L1_TYPES, LEGACY_TYPE_MAP, normalizeSubject, validateTriples } from "../lib/schema.js";
 import { forgetOldMemories, resetForgetCounter, type ForgetResult } from "../lib/forget.js";
 
 // --- Frontmatter parser ---
@@ -32,7 +32,14 @@ function parseFrontmatter(raw: string): { meta: Record<string, unknown>; body: s
     if (colonIdx === -1) continue;
     const key = trimmed.slice(0, colonIdx).trim();
     const rawValue = trimmed.slice(colonIdx + 1).trim();
-    if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
+    if (key === "triples") {
+      // Special-case: triples is a JSON-encoded array of [s, p, o] tuples,
+      // not a YAML list. Treat the entire value as an opaque string; the
+      // validation step JSON.parse()s it. Splitting on commas here would
+      // shred the inner tuples (e.g. `[["a","b","c"], ["d","e","f"]]` would
+      // become 4 string fragments).
+      meta[key] = rawValue;
+    } else if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
       meta[key] = rawValue
         .slice(1, -1)
         .split(",")
@@ -107,6 +114,34 @@ function validateFile(filePath: string, content: string): Issue[] {
     // 'source' is a legitimate optional metadata field written by saveMemory
     // (e.g. "explicit", "compaction", "observe") — informational, not schema.
     // No warning. See README "Frontmatter schema" table.
+  }
+
+  // Validate the optional `triples` field (KG relations, SoT for the KG index).
+  // Frontmatter stores it as a JSON-encoded string (the in-memory form
+  // after parseFrontmatter is the literal string written in the .md file);
+  // we attempt to parse it and run schema.validateTriples.
+  if (meta.triples !== undefined) {
+    let parsed: unknown = meta.triples;
+    if (typeof meta.triples === "string") {
+      try {
+        parsed = JSON.parse(meta.triples);
+      } catch (e) {
+        issues.push({
+          file: fileName,
+          severity: "error",
+          message: `triples field is not valid JSON: ${(e as Error).message}`,
+        });
+        parsed = undefined;
+      }
+    }
+    if (parsed !== undefined) {
+      const result = validateTriples(parsed);
+      if (!result.valid) {
+        for (const err of result.errors) {
+          issues.push({ file: fileName, severity: "error", message: `triples: ${err}` });
+        }
+      }
+    }
   }
 
   if (tags) {

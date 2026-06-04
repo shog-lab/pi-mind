@@ -88,7 +88,11 @@ export function runInit(opts: RunInitOptions): RunInitResult {
   );
 
   // 2. Create memory layer directories under .pi-mind/.
-  for (const sub of ["raw", "knowledge", "graph"]) {
+  // Note: there is no "graph/" subdirectory. The KG state lives in
+  // .pi-mind/.pi-mind-index.db (kg_entities / kg_triples tables) — it
+  // is a derived, rebuildable index over frontmatter `triples` fields,
+  // not a separate file layer.
+  for (const sub of ["raw", "knowledge"]) {
     const dir = join(piMindDir, sub);
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });

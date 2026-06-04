@@ -77,15 +77,16 @@ describe("runInit \u2014 fresh install", () => {
     }
   });
 
-  it("creates .pi-mind/{raw,knowledge,graph} directories", () => {
+  it("creates .pi-mind/{raw,knowledge} directories (no graph/ — KG lives in SQLite)", () => {
     const result = callInit();
-    for (const sub of ["raw", "knowledge", "graph"]) {
+    for (const sub of ["raw", "knowledge"]) {
       const dir = path.join(hostRoot, ".pi-mind", sub);
       expect(fs.existsSync(dir)).toBe(true);
       expect(fs.statSync(dir).isDirectory()).toBe(true);
     }
+    // KG state is in SQLite (.pi-mind-index.db), not in a graph/ subdir.
+    expect(fs.existsSync(path.join(hostRoot, ".pi-mind", "graph"))).toBe(false);
     expect(result.dirsCreated.sort()).toEqual([
-      ".pi-mind/graph",
       ".pi-mind/knowledge",
       ".pi-mind/raw",
     ]);
@@ -225,10 +226,11 @@ describe("runInit \u2014 custom piMindDir", () => {
     });
     expect(fs.existsSync(path.join(custom, "raw"))).toBe(true);
     expect(fs.existsSync(path.join(custom, "knowledge"))).toBe(true);
-    expect(fs.existsSync(path.join(custom, "graph"))).toBe(true);
+    // No graph/ — KG state is in SQLite.
+    expect(fs.existsSync(path.join(custom, "graph"))).toBe(false);
     // The default .pi-mind/ should NOT have been created.
     expect(fs.existsSync(path.join(hostRoot, ".pi-mind"))).toBe(false);
-    expect(r.dirsCreated).toContain("alt/memory/graph");
+    expect(r.dirsCreated).not.toContain("alt/memory/graph");
   });
 });
 

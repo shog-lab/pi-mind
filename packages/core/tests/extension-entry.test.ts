@@ -197,6 +197,46 @@ describe("memory extension \u2014 tool handler smoke", () => {
     const r2 = await tool.execute("test-id", { content, type: "user" });
     expect(r2.content[0].text).toMatch(/Skipped/);
   });
+
+  it("remember_this accepts type='project' (regression \u2014 not silently coerced to 'reference')", async () => {
+    // KG Batch 1 review: validTypes set was missing 'project' even though
+    // the tool's enum listed it. Verify project is now a valid type and
+    // gets written to the frontmatter (not silently coerced to reference).
+    const pi = makeMockPi();
+    memExtension(pi);
+    const tool = pi.tools.get("remember_this")!;
+    const r = await tool.execute("test-id", {
+      content: "Project-level architecture fact project-marker-X9",
+      type: "project",
+    });
+    expect(r.content[0].text).toMatch(/Saved to /);
+    const fp = r.content[0].text.replace(/^Saved to /, "");
+    const body = fs.readFileSync(fp, "utf-8");
+    expect(body).toContain("type: project");
+    // Negative control: an INVALID type (e.g. "not-a-thing") still falls back to reference.
+    const r2 = await tool.execute("test-id", {
+      content: "Garbage type coerce test fallback-marker",
+      type: "not-a-valid-type",
+    });
+    const fp2 = r2.content[0].text.replace(/^Saved to /, "");
+    expect(fs.readFileSync(fp2, "utf-8")).toContain("type: reference");
+  });
+
+  it("remember_this rejects whitespace-only triple entries (trim check)", async () => {
+    const pi = makeMockPi();
+    memExtension(pi);
+    const tool = pi.tools.get("remember_this")!;
+    const r = await tool.execute("test-id", {
+      content: "Some memory with whitespace-only triple",
+      type: "project",
+      triples: [["good", "ok", "yes"], ["  ", "blank", "x"]],
+    });
+    // Tool boundary must reject — the blank entry would be silently
+    // dropped by the parser, leaving a hole in the frontmatter vs. what
+    // the agent thought it wrote.
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toMatch(/non-empty|whitespace/);
+  });
 });
 
 describe("memory extension \u2014 hook handler smoke", () => {

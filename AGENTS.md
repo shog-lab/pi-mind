@@ -154,10 +154,10 @@ All shared state lives under three roots, all resolvable from any cwd in the rep
 ├── raw/observations/           agent's notes during work
 ├── raw/compaction/             auto-summaries
 ├── raw/maintenance-log/        internal ops trail
-├── knowledge/*.md              compiled facts (frontmatter-tagged)
-└── graph/                      KG managed from frontmatter triples
-
+└── knowledge/*.md              compiled facts (frontmatter-tagged) + `triples` field is KG SoT
 ```
+
+**No `graph/` subdirectory.** The KG state lives in `.pi-mind/.pi-mind-index.db` (tables `kg_entities` / `kg_triples`); it's a derived, rebuildable index over the frontmatter `triples:` field of `knowledge/*.md`. Each `syncIndex` does a full rebuild from the current set of `.md` files — cheap for typical repos, and it makes stale-triple drift impossible by construction.
 
 **Path resolution** uses `git rev-parse --git-common-dir` (see `packages/utils/src/paths.ts`) — `.pi-mind/` always points to the **main repo root** even when called from a linked worktree. `$PI_MIND_DIR` env var overrides.
 

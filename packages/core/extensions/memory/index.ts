@@ -274,14 +274,56 @@ export default function memExtension(pi: ExtensionAPI) {
         tier: { type: "string", enum: ["L1", "L2"], description: "L1 = always injected next session (use sparingly, only for durable preferences). L2 = retrieved by relevance (default)." },
         tags: { type: "array", items: { type: "string" }, description: "1-3 topic keywords to aid future retrieval." },
         image_path: { type: "string", description: "Optional absolute path to an image (.png/.jpg/.jpeg/.gif/.webp). The file will be copied into pi-mind's content-addressed image store and linked from the memory entry. Files >2MB are auto-compressed; >20MB are rejected." },
+        triples: {
+          type: "array",
+          description: "Optional structured KG relations. Each entry must be a 3-string tuple [subject, predicate, object]. Written into the knowledge file's frontmatter as `triples: [[...], ...]`; syncIndex rebuilds the SQLite kg_* index from this on the next turn. Omit unless this memory is about people, ownership, schedules, or other entity-level relationships — most memories don't need it.",
+          items: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 3,
+            maxItems: 3,
+          },
+        },
       },
       required: ["content"],
     },
-    async execute(_id: string, params: { content: string; type?: string; tier?: string; tags?: string[]; image_path?: string }) {
-      const validTypes = new Set(["user", "reference", "agent-feedback"]);
+    async execute(_id: string, params: { content: string; type?: string; tier?: string; tags?: string[]; image_path?: string; triples?: Array<[string, string, string]> }) {
+      const validTypes = new Set(["user", "project", "reference", "agent-feedback"]);
       const type = (params.type && validTypes.has(params.type) ? params.type : "reference") as Subject;
       const tier = (params.tier === "L1" ? "L1" : "L2") as Tier;
       const tags = Array.isArray(params.tags) ? params.tags.filter((t) => typeof t === "string").slice(0, 5) : undefined;
+
+      // Validate triples at the tool boundary. We don't want to silently
+      // accept malformed input — the agent should know immediately if it
+      // got the shape wrong. KG.addTriple would also validate, but it
+      // returns null on failure (silent), which is bad UX for a tool.
+      let triples: Array<[string, string, string]> | undefined;
+      if (params.triples !== undefined) {
+        if (!Array.isArray(params.triples)) {
+          return { content: [{ type: "text" as const, text: "triples must be an array of 3-string tuples" }], details: {}, isError: true as const };
+        }
+        triples = [];
+        for (let i = 0; i < params.triples.length; i++) {
+          const t = params.triples[i];
+          if (!Array.isArray(t) || t.length !== 3) {
+            return { content: [{ type: "text" as const, text: `triples[${i}] must be a 3-element array [subject, predicate, object], got: ${JSON.stringify(t)}` }], details: {}, isError: true as const };
+          }
+          if (typeof t[0] !== "string" || typeof t[1] !== "string" || typeof t[2] !== "string") {
+            return { content: [{ type: "text" as const, text: `triples[${i}] entries must all be strings, got: ${JSON.stringify(t)}` }], details: {}, isError: true as const };
+          }
+          if (t[0].trim().length === 0 || t[1].trim().length === 0 || t[2].trim().length === 0) {
+            return { content: [{ type: "text" as const, text: `triples[${i}] entries must be non-empty (after trim) strings, got: ${JSON.stringify(t)}` }], details: {}, isError: true as const };
+          }
+          // Trim leading/trailing whitespace before storing. We accept
+          // untrimmed input (per alice's preference) so the agent doesn't
+          // get rejected for `[["alice ", ...]]`, but we store the clean
+          // form so the KG entity is e.g. "alice" (not " alice "). This
+          // matches the trim behavior in parseTriplesFromFrontmatter +
+          // rebuildKGFromFiles.
+          triples.push([t[0].trim(), t[1].trim(), t[2].trim()]);
+        }
+        if (triples.length === 0) triples = undefined; // treat [] as "no triples"
+      }
 
       // Image handling: validate + (optionally compress) + copy into raw/images/.
       // If image storage fails, abort the entire save — agent decided the image
@@ -306,11 +348,12 @@ export default function memExtension(pi: ExtensionAPI) {
           tags,
           source: "explicit",
           image: imageRelPath,
+          triples,
         });
         const text = fp
           ? (imageRelPath ? `Saved to ${fp} (image at ${imageRelPath})` : `Saved to ${fp}`)
           : "Skipped (duplicate of existing memory)";
-        logMaintenance("remember-this", { saved: !!fp, type, tier, hasImage: !!imageRelPath });
+        logMaintenance("remember-this", { saved: !!fp, type, tier, hasImage: !!imageRelPath, hasTriples: !!triples });
         return { content: [{ type: "text" as const, text }], details: {} };
       } catch (e) {
         return { content: [{ type: "text" as const, text: `Save failed: ${String(e)}` }], details: {} };

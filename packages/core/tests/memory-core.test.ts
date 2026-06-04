@@ -354,8 +354,12 @@ describe('MemoryCore', () => {
     });
 
     it('includes KG when entities match', async () => {
-      mc.kg.addTriple('Alice', 'works_at', 'CompanyX');
-      writeWikiFile('dummy.md', 'Placeholder');
+      // KG SoT is frontmatter. Write a knowledge file with triples, then
+      // syncIndex rebuilds the kg_* index from it.
+      writeWikiFile('alice.md', 'Alice works at CompanyX.', {
+        type: 'project',
+        triples: '[["Alice", "works_at", "CompanyX"]]',
+      });
       await mc.syncIndex();
       const ctx = await mc.buildContext('What does Alice do');
       expect(ctx).toContain('knowledge-graph');

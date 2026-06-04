@@ -10,14 +10,13 @@ $PI_MIND_DIR/
 │   ├── sessions/      conversation transcripts
 │   ├── observations/  things you noticed during work
 │   └── compaction/    auto-saved conversation summaries (don't write here manually)
-├── knowledge/   ← what's true (compiled, curated)
-└── graph/       ← how things connect (entity/relation index, managed by system)
+└── knowledge/   ← what's true (compiled, curated, and the SoT for the KG)
 ```
 
-**Three layers, three roles:**
+**Two layers (plus the KG index):**
 - **raw** — record raw events. Cheap to write. No need to be polished.
 - **knowledge** — extract durable facts, decisions, concepts. Write only when the content has clear future-reuse value. Trivia and one-off details don't belong here.
-- **graph** — maintained automatically from frontmatter `triples`. You don't write to it directly.
+- **KG index** — derived from frontmatter `triples` fields. The knowledge/*.md files are the source of truth; the SQLite `kg_*` tables in `.pi-mind/.pi-mind-index.db` are a rebuildable index. There is no `graph/` directory — don't try to write to one.
 
 Relevant memory is automatically injected into your context before each query. You don't need to search it — the system retrieves what's relevant.
 
@@ -53,7 +52,9 @@ We chose JWT over sessions because of mobile client constraints.
 
 ### Knowledge graph triples
 
-When a memory involves people, schedules, or relationships, add a `triples` field:
+When a memory involves people, schedules, or relationships, add a `triples` field. You can do this either by:
+  - passing a `triples` parameter to the `remember_this` tool (recommended — it gets validated at the tool boundary), or
+  - editing the knowledge file directly and writing the `triples:` JSON array into the frontmatter.
 
 ```markdown
 ---
@@ -67,7 +68,7 @@ triples: [["alice", "owns", "auth-service"], ["alice", "role", "backend-lead"]]
 Alice owns the auth service.
 ```
 
-Triples enable structured queries like "who owns X" or "what does alice do."
+Triples enable structured queries like "who owns X" or "what does alice do." The `triples` field is the source of truth — the SQLite `kg_*` index is rebuilt from it automatically on the next sync.
 
 ### Page interconnection
 

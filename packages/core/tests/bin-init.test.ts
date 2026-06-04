@@ -153,10 +153,10 @@ describe("bin/init.js \u2014 real postinstall", () => {
       PI_MIND_DIR: path.join(host, ".pi-mind"),
     });
     expect(r.status).toBe(0);
-    // The .pi-mind dirs are created.
+    // The .pi-mind dirs are created. (No graph/ — KG lives in SQLite.)
     expect(fs.existsSync(path.join(host, ".pi-mind", "raw"))).toBe(true);
     expect(fs.existsSync(path.join(host, ".pi-mind", "knowledge"))).toBe(true);
-    expect(fs.existsSync(path.join(host, ".pi-mind", "graph"))).toBe(true);
+    expect(fs.existsSync(path.join(host, ".pi-mind", "graph"))).toBe(false);
   });
 
   it("with init-lib.js AND dist/extensions/, creates symlinks into host's .pi/", () => {

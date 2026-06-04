@@ -22,12 +22,10 @@ Memory lives in `$PI_MIND_DIR` (default `./.pi-mind` in the current repo) with t
 │   ├── compaction/    auto-saved conversation summaries
 │   └── maintenance-log/  jsonl trail of internal ops
 ├── knowledge/   — what's true
-│   └── *.md           compiled facts, decisions, concepts (frontmatter + body)
-└── graph/       — how it's connected
-    └── (managed by KG module from frontmatter `triples` fields)
+│   └── *.md           compiled facts, decisions, concepts (frontmatter + body) + `triples` field (KG SoT)
 ```
 
-Three layers map to cognitive science: **raw** (raw events), **semantic** (compiled knowledge), **relational** (entity-relationship graph). Markdown wiki is one rendering of `knowledge/`, not memory itself — raw is real append-only logs; graph is structured triples.
+Two layers plus a derived KG index: **raw** (append-only event stream), **knowledge** (compiled markdown — also the SoT for the KG via its `triples:` frontmatter field), and the **KG index** (SQLite `kg_*` tables in `.pi-mind/.pi-mind-index.db`, rebuilt from frontmatter on every sync). There is no `graph/` directory — the KG lives in SQLite, not on disk as a separate file layer.
 
 ## Install
 
@@ -35,7 +33,7 @@ Three layers map to cognitive science: **raw** (raw events), **semantic** (compi
 npm i -D @shog-lab/pi-mind-core
 ```
 
-`postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/ graph/` directories. Idempotent — re-running `npm install` is safe.
+`postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/` directories. Idempotent — re-running `npm install` is safe.
 
 `pi-mind` declares `@earendil-works/pi-coding-agent` as a peer dependency. Make sure `pi` is on `PATH` (typically via `npm i -g @earendil-works/pi-coding-agent`).
 
@@ -202,7 +200,10 @@ pi process (the runtime)
   ↓ extension load
 memory extension initializes:
   - reads .pi-mind/ from disk
-  - syncs FTS5 + vector index in .pi-mind/.pi-mind-index.db
+  - syncs FTS5 + vector + KG index in .pi-mind/.pi-mind-index.db
+    (KG index is rebuilt from frontmatter `triples` fields on every sync;
+    frontmatter is the source of truth, the SQLite kg_* tables are a
+    derived, rebuildable index)
   - registers hooks: before_agent_start / turn_end / session_compact
   - registers tools: remember_this, observe, recall_memory,
                      mark_daily_audit_complete

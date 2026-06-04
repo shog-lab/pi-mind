@@ -2,12 +2,15 @@
  * pi-mind Memory Core — pure logic, no pi-coding-agent dependency.
  * Used by both the extension (index.ts) and benchmark scripts.
  *
- * Three-layer memory model:
- *   knowledge/   — compiled, durable facts and decisions
- *   raw/    — append-only event stream (sessions, observations, compactions)
- *   graph/       — relations extracted from frontmatter triples (managed by KG module)
+ * Two-layer memory model (the KG is a derived SQLite index, not a third layer):
+ *   knowledge/   — compiled, durable facts and decisions. Source of truth for
+ *                  the KG via its frontmatter `triples:` field.
+ *   raw/         — append-only event stream (sessions, observations, compactions).
  *
- * All directories are peers under PI_MIND_DIR.
+ * The KG state lives in SQLite tables `kg_entities` / `kg_triples` in
+ * `.pi-mind-index.db`. It is rebuildable from the current set of
+ * knowledge/*.md frontmatter on every syncIndex. There is no
+ * `.pi-mind/graph/` directory.
  */
 
 import { createHash } from "node:crypto";
@@ -75,6 +78,14 @@ export interface SaveMemoryInput {
    * saveMemory is invoked; this field only records the link in frontmatter.
    */
   image?: string;
+  /**
+   * Optional structured KG relations: each entry is [subject, predicate, object]
+   * (all 3 strings). Written into the knowledge file's frontmatter as
+   * `triples: [["s","p","o"], ...]`; syncIndex then re-derives the SQLite
+   * kg_* tables from this. The frontmatter is the source of truth —
+   * never write to kg_triples directly from here.
+   */
+  triples?: Array<[string, string, string]>;
 }
 
 function renderMemoryBody(input: SaveMemoryInput): string {
@@ -438,7 +449,6 @@ export class MemoryCore {
           "INSERT OR REPLACE INTO memory_meta (file_path, mtime_ms) VALUES (?, ?)"
         ).run(filePath, mtime);
 
-        try { this.extractTriplesFromFile(filePath); } catch {}
         this._pendingEmbeddings.push({ filePath, content: body });
       }
 
@@ -450,6 +460,16 @@ export class MemoryCore {
           this.db.prepare("DELETE FROM memory_vectors WHERE file_path = ?").run(filePath);
         }
       }
+
+      // KG: full rebuild from knowledge/*.md frontmatter triples. The
+      // knowledge/ directory is the SoT for the KG; kg_triples is a
+      // derived index we can rebuild from scratch on every syncIndex.
+      // Cheap (typical repos have <1000 knowledge .md files) and
+      // eliminates an entire class of stale-triple drift bugs. Pre-0.8.0
+      // noise from autoExtractTriples is also cleaned up automatically
+      // on the first syncIndex after upgrade. raw/compaction/*.md is
+      // deliberately NOT included — see rebuildKGFromFiles doc.
+      this.rebuildKGFromFiles();
 
       // Persist any queued embeddings now. Previously flushEmbeddings was
       // only called from buildContext, which the production hook bypassed —
@@ -503,10 +523,17 @@ export class MemoryCore {
    * `context` (the conversation that produced it). Rendered into one markdown
    * body with frontmatter.
    *
-   * Dedup: hash is computed from (type, primary). Existing file in destDir
-   * with the same hash suffix is treated as duplicate and the new write is
-   * skipped (returns null). This lets multiple writers (remember_this, observe,
-   * compaction) race on the same content without polluting.
+   * Dedup: hash is computed from (type, primary, canonical triples).
+   *   - Two saves with identical (type, primary) but different triples
+   *     produce distinct files — structured KG metadata is not silently
+   *     dropped on dedup. (The tool layer trims triples before passing
+   *     them in, and the hash normalizes triple order so logically-
+   *     equivalent triples dedup.)
+   *   - Same (type, primary, triples) dedups to null.
+   * Existing file in destDir with the same hash suffix is treated as
+   * duplicate and the new write is skipped. This lets multiple writers
+   * (remember_this, observe, compaction) race on the same content
+   * without polluting.
    */
   async saveMemory(input: SaveMemoryInput): Promise<string | null> {
     return withGroupLock(this.groupDir, async () => {
@@ -515,7 +542,32 @@ export class MemoryCore {
         : this.knowledgeDir;
       mkdirSync(destDir, { recursive: true });
 
-      const hash = createHash("sha256").update(`${input.type}:${input.primary}`).digest("hex").slice(0, 8);
+      // Dedup hash includes (type, primary, canonical triples) so that
+      // saving the same content with different triples produces distinct
+      // files (no silent loss of structured KG metadata). Triple order
+      // is normalized so logically-equivalent triples dedup; missing
+      // triples hashes as the empty string.
+      //
+      // Trim each triple value before hashing so that hand-edited
+      // whitespace (e.g. `["  alice  ", " owns ", " x "]`) and tool-
+      // layer-trimmed input produce the same hash. parseTriplesFrom-
+      // Frontmatter applies the same trim at ingestion; this keeps the
+      // two paths consistent.
+      const normalizedTriples: Array<[string, string, string]> | undefined =
+        input.triples && input.triples.length > 0
+          ? input.triples.map(([s, p, o]) => [s.trim(), p.trim(), o.trim()] as [string, string, string])
+          : undefined;
+      const triplesKey = normalizedTriples && normalizedTriples.length > 0
+        ? JSON.stringify(
+            [...normalizedTriples].sort((a, b) =>
+              a[0] === b[0] ? (a[1] === b[1] ? a[2].localeCompare(b[2]) : a[1].localeCompare(b[1])) : a[0].localeCompare(b[0]),
+            ),
+          )
+        : "";
+      const hash = createHash("sha256")
+        .update(`${input.type}:${input.primary}:${triplesKey}`)
+        .digest("hex")
+        .slice(0, 8);
 
       // Dedup: any existing file with this hash suffix means we've already saved this content.
       try {
@@ -536,11 +588,26 @@ export class MemoryCore {
       if (input.tags?.length) frontmatter.tags = input.tags;
       if (input.source) frontmatter.source = input.source;
       if (input.image) frontmatter.image = input.image;
+      // KG triples: serialized as a JSON array of [s, p, o] tuples.
+      // Validation happens at the tool boundary (remember_this), so by
+      // the time we get here the shape is guaranteed. The frontmatter
+      // is the SoT — syncIndex will re-derive kg_triples from it.
+      //
+      // Use the trimmed `normalizedTriples` (computed above for the
+      // dedup hash) for the frontmatter write too, so what's on disk
+      // is the canonical clean form regardless of what the caller
+      // passed in. This matches what parseTriplesFromFrontmatter
+      // will produce on re-read — so save→read roundtrips are stable.
+      if (normalizedTriples && normalizedTriples.length > 0) {
+        frontmatter.triples = JSON.stringify(normalizedTriples);
+      }
 
       const body = renderMemoryBody(input);
       const raw = serializeFrontmatter(frontmatter, body);
       writeFileSync(filePath, raw, "utf-8");
-      try { this.extractTriplesFromFile(filePath); } catch {}
+      // KG triples: the frontmatter is SoT. The kg_* tables are rebuilt
+      // on the next syncIndex (called from before_agent_start hook,
+      // turn_end, session_compact). No direct SQLite write here.
       // Bump the persistent write counter; auto-runs forget on threshold.
       // Best-effort — failures here are non-fatal (filesystem hiccup, marker
       // unwritable, etc.). saveMemory's own success path is already complete.
@@ -832,105 +899,118 @@ export class MemoryCore {
   }
 
   // --- Triple extraction from files ---
+  //
+  // Source of truth: frontmatter `triples:` field in knowledge/*.md ONLY.
+  // raw/compaction/*.md is deliberately excluded from KG ingest — it's
+  // the conversation-scoped event stream, not the curated knowledge
+  // layer, and folding it in would inject noise as durable "facts".
+  // The kg_* SQLite tables are a derived index rebuilt from scratch on
+  // every syncIndex. We do NOT auto-extract from body content — that
+  // was a pre-0.8.0 hack with high false-positive rate; the agent now
+  // writes triples explicitly via the remember_this tool's `triples`
+  // parameter (which serializes to frontmatter), or by editing the
+  // .md file directly.
 
-  private extractTriplesFromFile(filePath: string): void {
-    let rawContent: string;
-    try { rawContent = readFileSync(filePath, "utf-8"); } catch { return; }
-
-    const { meta, body } = parseFrontmatter(rawContent);
-    const date = (meta.date as string) || new Date().toISOString();
-
-    // Manual triples from frontmatter
-    if (rawContent.startsWith("---")) {
-      const endIdx = rawContent.indexOf("\n---", 3);
-      if (endIdx !== -1) {
-        const yamlBlock = rawContent.slice(4, endIdx);
-        for (const line of yamlBlock.split("\n")) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("triples:")) continue;
-          const jsonStr = trimmed.slice("triples:".length).trim();
-          try {
-            const triples = JSON.parse(jsonStr);
-            if (!Array.isArray(triples)) break;
-            for (const t of triples) {
-              if (Array.isArray(t) && t.length >= 3) {
-                this.kg.addTriple(t[0], t[1], t[2], { validFrom: t[3] || date.slice(0, 10), sourceFile: filePath });
-              }
-            }
-          } catch {}
-          break;
+  /**
+   * Parse the `triples:` field from a knowledge file's frontmatter.
+   * Pure function: file content in, [s, p, o][] out.
+   * No filesystem, no SQLite, no I/O. Unit-testable in isolation.
+   *
+   * Format: a single frontmatter line
+   *   triples: [["alice", "owns", "auth-service"], ...]
+   * The value is a JSON array of 3-string tuples.
+   */
+  parseTriplesFromFrontmatter(rawContent: string): Array<[string, string, string]> {
+    if (!rawContent.startsWith("---")) return [];
+    const endIdx = rawContent.indexOf("\n---", 3);
+    if (endIdx === -1) return [];
+    const yamlBlock = rawContent.slice(4, endIdx);
+    for (const line of yamlBlock.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("triples:")) continue;
+      const jsonStr = trimmed.slice("triples:".length).trim();
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (!Array.isArray(parsed)) return [];
+        const out: Array<[string, string, string]> = [];
+        for (const t of parsed) {
+          if (
+            Array.isArray(t) &&
+            t.length === 3 &&
+            typeof t[0] === "string" &&
+            typeof t[1] === "string" &&
+            typeof t[2] === "string" &&
+            t[0].trim().length > 0 &&
+            t[1].trim().length > 0 &&
+            t[2].trim().length > 0
+          ) {
+            // Trim before storing. Hand-edited .md files often have
+            // `[["  alice  ", " owns ", " x "]]` (whitespace from
+            // human formatting). If we don't trim, the KG entity
+            // becomes "  alice  " and `buildContext('alice')` won't
+            // match. The tool layer trims on its own, but the parser
+            // is the SoT path for hand-edited files and must trim too.
+            out.push([t[0].trim(), t[1].trim(), t[2].trim()] as [string, string, string]);
+          }
         }
+        return out;
+      } catch {
+        return [];
       }
     }
-
-    // Auto-extract from content
-    this.autoExtractTriples(body, date.slice(0, 10), filePath);
+    return [];
   }
 
-  private autoExtractTriples(content: string, defaultDate: string, sourceFile: string): void {
-    const months: Record<string, string> = {
-      january: "01", february: "02", march: "03", april: "04",
-      may: "05", june: "06", july: "07", august: "08",
-      september: "09", october: "10", november: "11", december: "12",
-    };
+  /**
+   * Full KG rebuild from the knowledge directory. Wipes kg_triples,
+   * re-derives from each knowledge/*.md file's frontmatter, then
+   * vacuums kg_entities that are no longer referenced by any triple.
+   *
+   * Only files under `knowledgeDir` are ingested — the KG SoT is the
+   * curated knowledge layer, NOT the raw/ event stream. raw/compaction
+   * entries are FTS5/vector-indexed for retrieval but never contribute
+   * to the KG; compaction summaries are conversation-scoped, not
+   * curated entity-relation facts, and folding them in would inject
+   * noise as durable "facts" (e.g. "user said X on Tuesday").
+   *
+   * Called at the end of every syncIndex(). Cheap (typical repos have
+   * <1000 .md files) and eliminates stale-triple drift by construction:
+   * we never accumulate triples that don't match a current knowledge file.
+   *
+   * Public so the integration tests (and the future memory-audit
+   * "force rebuild" action) can invoke it directly. The optional
+   * `dir` parameter is a test seam — production callers omit it and
+   * the default `this.knowledgeDir` is used.
+   */
+  rebuildKGFromFiles(dir?: string): { triples: number; entities: number } {
+    const targetDir = dir ?? this.knowledgeDir;
+    if (!this.db.open) return { triples: 0, entities: 0 };
 
-    const dateEventRegex = /(?:on|since|from|starting|began?|started)\s+(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
-    let match;
-    while ((match = dateEventRegex.exec(content)) !== null) {
-      const monthStr = match[1].toLowerCase();
-      const day = match[2].padStart(2, "0");
-      const year = match[3] || defaultDate.slice(0, 4);
-      const monthNum = months[monthStr];
-      if (!monthNum) continue;
-      const dateStr = `${year}-${monthNum}-${day}`;
-      const start = Math.max(0, match.index - 100);
-      const end = Math.min(content.length, match.index + match[0].length + 100);
-      const context = content.slice(start, end);
-      const actionMatch = context.match(/I\s+(bought|got|started|finished|attended|visited|joined|moved|received|completed|took|had|went|made|tried|began|signed up|enrolled|registered|scheduled|booked)\s+(.{3,40}?)(?:\.|,|!|\?|on\s)/i);
-      if (actionMatch) {
-        const action = actionMatch[1].toLowerCase();
-        const object = actionMatch[2].trim().replace(/^(a|an|the|my|our)\s+/i, "");
-        this.kg.addTriple("user", action, object, { validFrom: dateStr, sourceFile });
+    // 1. Wipe all triples. Vacuum entities afterward so we don't leave
+    //    orphan rows pointing at nothing.
+    this.db.exec("DELETE FROM kg_triples;");
+    this.db.exec("DELETE FROM kg_entities;");
+
+    // 2. Re-derive from each knowledge/*.md file's frontmatter.
+    let totalTriples = 0;
+    for (const filePath of collectMdFiles(targetDir)) {
+      let raw: string;
+      try { raw = readFileSync(filePath, "utf-8"); } catch { continue; }
+      const { meta } = parseFrontmatter(raw);
+      const dateStr = (meta.date as string)?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+      // parseTriplesFromFrontmatter already trims, but trim defensively
+      // here too so the KG entity_id never has leading/trailing
+      // whitespace. (The kg layer's entityId() replaces \s+ with "_",
+      // so untrimmed inputs become e.g. "__alice__" — which then
+      // doesn't match `buildContext('alice')`.)
+      const triples = this.parseTriplesFromFrontmatter(raw);
+      for (const [s, p, o] of triples) {
+        this.kg.addTriple(s, p, o, { validFrom: dateStr, sourceFile: filePath });
+        totalTriples++;
       }
     }
 
-    const isoDateRegex = /(\d{4})-(\d{2})-(\d{2})/g;
-    while ((match = isoDateRegex.exec(content)) !== null) {
-      const dateStr = match[0];
-      const start = Math.max(0, match.index - 100);
-      const end = Math.min(content.length, match.index + 15);
-      const context = content.slice(start, end);
-      const actionMatch = context.match(/I\s+(bought|got|started|finished|attended|visited|joined|moved|received|completed|took|had|went|made|tried|began)\s+(.{3,40}?)(?:\.|,|!|\?|\s+on)/i);
-      if (actionMatch) {
-        const action = actionMatch[1].toLowerCase();
-        const object = actionMatch[2].trim().replace(/^(a|an|the|my|our)\s+/i, "");
-        this.kg.addTriple("user", action, object, { validFrom: dateStr, sourceFile });
-      }
-    }
-
-    const actionDateRegex = /I\s+(bought|got|started|finished|attended|visited|joined|moved to|received|completed|took|signed up for|enrolled in|registered for|scheduled|booked)\s+(.{3,60}?)\s+(?:on|in|at|around|since)\s+(\w+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?)/gi;
-    while ((match = actionDateRegex.exec(content)) !== null) {
-      const action = match[1].toLowerCase();
-      const object = match[2].trim().replace(/^(a|an|the|my|our)\s+/i, "");
-      const dateText = match[3];
-      const dateMatch = dateText.match(/(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/);
-      if (dateMatch) {
-        const monthNum = months[dateMatch[1].toLowerCase()];
-        if (monthNum) {
-          const day = dateMatch[2].padStart(2, "0");
-          const year = dateMatch[3] || defaultDate.slice(0, 4);
-          this.kg.addTriple("user", action, object, { validFrom: `${year}-${monthNum}-${day}`, sourceFile });
-        }
-      }
-    }
-
-    const possessionRegex = /(?:my|I have a|I own a|I got a)\s+(new\s+)?([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){0,3})/g;
-    while ((match = possessionRegex.exec(content)) !== null) {
-      const object = (match[1] || "") + match[2];
-      if (object.length > 3 && object.length < 40) {
-        this.kg.addTriple("user", "has", object.trim(), { validFrom: defaultDate, sourceFile });
-      }
-    }
+    return { triples: totalTriples, entities: this.kg.stats().entities };
   }
 
   // --- Build full context ---
