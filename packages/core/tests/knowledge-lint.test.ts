@@ -9,7 +9,7 @@
  *   "must be an array, got string" \u2014 3 errors per valid triple. This
  *   test pins the fix.
  */
-import { spawnSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
@@ -359,3 +359,185 @@ describe("knowledge-lint --rebuild-kg --apply", () => {
     db.close();
   });
 });
+
+// =============================================================================
+// PI_MIND_DIR resolution (unified across all modes)
+//
+// Background: pre-fix, only --rebuild-kg used git-common-dir-aware
+// resolvePiMindDir. Normal lint/fix/prune used the naive
+// `path.join(process.cwd(), ".pi-mind")`, so running `pi-mind-lint` from a
+// workspace subdir (e.g. packages/core/) would look for
+// packages/core/.pi-mind instead of the main repo's .pi-mind.
+//
+// These tests pin the unified behavior: env PI_MIND_DIR wins, else
+// resolvePiMindDir(cwd) is used, for every mode. --dir still overrides
+// the lint knowledge directory (only).
+// =============================================================================
+
+/**
+ * Run the lint script from a specific cwd with a controlled env.
+ * `env` entries with value `undefined` are DELETED from the spawned env
+ * (so the "no PI_MIND_DIR" case is testable even when the parent runner
+ * happens to have PI_MIND_DIR set).
+ */
+function runLintIn(
+  cwd: string,
+  env: Record<string, string | undefined>,
+  args: string[],
+): { status: number | null; stdout: string; stderr: string } {
+  const finalEnv: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string") finalEnv[k] = v;
+  }
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) delete finalEnv[k];
+    else finalEnv[k] = v;
+  }
+  const r = spawnSync("npx", ["tsx", LINT_SCRIPT, ...args], {
+    cwd,
+    env: finalEnv,
+    encoding: "utf-8",
+    timeout: 30_000,
+  });
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+}
+
+/** Create a throwaway git repo with one initial commit, so resolvePiMindDir works. */
+function makeGitRepo(): string {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "pi-mind-lint-resolve-"));
+  execSync("git init -q", { cwd: repo });
+  execSync("git config user.email test@test.invalid", { cwd: repo });
+  execSync("git config user.name test", { cwd: repo });
+  // Need at least one commit so `git rev-parse --git-common-dir` returns
+  // a usable path (some versions return empty for a brand-new repo with
+  // no commits).
+  fs.writeFileSync(path.join(repo, ".gitkeep"), "");
+  execSync("git add .gitkeep && git commit -q -m initial", { cwd: repo });
+  return repo;
+}
+
+describe("knowledge-lint \u2014 PI_MIND_DIR resolution", () => {
+  let repoDir: string;
+
+  beforeEach(() => {
+    repoDir = makeGitRepo();
+  });
+
+  afterEach(() => {
+    try { fs.rmSync(repoDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it("walks up to the git repo root for .pi-mind when no PI_MIND_DIR is set", { timeout: 60_000 }, () => {
+    // Root has the real .pi-mind/knowledge/sentinel.md.
+    // sub/ has a decoy .pi-mind/knowledge/decoy.md that the OLD code
+    // would have wrongly picked up. The fix must use the root.
+    fs.mkdirSync(path.join(repoDir, ".pi-mind/knowledge"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoDir, ".pi-mind/knowledge/sentinel.md"),
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [x]\n---\n\nroot sentinel body\n`,
+    );
+    fs.mkdirSync(path.join(repoDir, "sub", ".pi-mind", "knowledge"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoDir, "sub", ".pi-mind", "knowledge", "decoy.md"),
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [x]\n---\n\ndecoy body\n`,
+    );
+
+    const r = runLintIn(
+      path.join(repoDir, "sub"),
+      { PI_MIND_DIR: undefined },
+      [],
+    );
+    expect(r.status).toBe(0);
+    // Lint's summary section lists files. With the fix, only sentinel.md.
+    expect(r.stdout).toContain("sentinel.md");
+    expect(r.stdout).not.toContain("decoy.md");
+  });
+
+  it("PI_MIND_DIR env wins over the cwd-derived resolvePiMindDir", { timeout: 60_000 }, () => {
+    // Real git repo with root .pi-mind/knowledge/root-sentinel.md.
+    fs.mkdirSync(path.join(repoDir, ".pi-mind/knowledge"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoDir, ".pi-mind/knowledge/root-sentinel.md"),
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [x]\n---\n\nroot body\n`,
+    );
+
+    // A completely separate non-git dir used via PI_MIND_DIR. Lint must
+    // use THIS, not the git repo's .pi-mind.
+    const envDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-mind-lint-env-"));
+    try {
+      fs.mkdirSync(path.join(envDir, "knowledge"), { recursive: true });
+      fs.writeFileSync(
+        path.join(envDir, "knowledge", "env-sentinel.md"),
+        `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [x]\n---\n\nenv body\n`,
+      );
+
+      const r = runLintIn(
+        repoDir,  // cwd would resolve to repoDir/.pi-mind if env were unset
+        { PI_MIND_DIR: envDir },
+        [],
+      );
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("env-sentinel.md");
+      expect(r.stdout).not.toContain("root-sentinel.md");
+    } finally {
+      try { fs.rmSync(envDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  it("--dir still overrides the normal lint knowledge directory", { timeout: 60_000 }, () => {
+    // The resolved .pi-mind has a normal.md file.
+    fs.mkdirSync(path.join(repoDir, ".pi-mind/knowledge"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repoDir, ".pi-mind/knowledge/normal.md"),
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [x]\n---\n\nnormal body\n`,
+    );
+    // --dir target has its own override.md file.
+    const customDir = path.join(repoDir, "custom");
+    fs.mkdirSync(customDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(customDir, "override.md"),
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [x]\n---\n\noverride body\n`,
+    );
+
+    const r = runLintIn(
+      repoDir,
+      { PI_MIND_DIR: undefined },
+      ["--dir", customDir],
+    );
+    expect(r.status).toBe(0);
+    // Lint prints "Memory Lint \u2014 N files". With --dir=custom, only
+    // override.md is scanned; the resolved .pi-mind/knowledge/normal.md
+    // is bypassed.
+    expect(r.stdout).toContain("override.md");
+    expect(r.stdout).not.toContain("normal.md");
+    expect(r.stdout).toMatch(/Memory Lint\s+\u2014\s+1 files/);
+  });
+
+  it("--prune is not affected by --dir (uses PI_MIND_DIR / resolvePiMindDir only)", { timeout: 60_000 }, () => {
+    // PI_MIND_DIR points to root with a knowledge/ subdir; --dir points
+    // elsewhere. The prune header must reference PI_MIND_DIR, not --dir.
+    const pruneDir = path.join(repoDir, "prune-root");
+    fs.mkdirSync(path.join(pruneDir, "knowledge"), { recursive: true });
+    fs.mkdirSync(path.join(pruneDir, "raw"), { recursive: true });
+
+    const otherDir = path.join(repoDir, "other");
+    fs.mkdirSync(otherDir, { recursive: true });
+
+    const r = runLintIn(
+      repoDir,
+      { PI_MIND_DIR: pruneDir },
+      ["--prune", "--dir", otherDir],
+    );
+    expect(r.status).toBe(0);
+    // Header line includes the resolved PI_MIND_DIR.
+    expect(r.stdout).toMatch(new RegExp(`PI_MIND_DIR=${escapeRegex(pruneDir)}`));
+    // --dir value must not appear in the PI_MIND_DIR= header (prune
+    // ignores --dir entirely).
+    expect(r.stdout).not.toMatch(new RegExp(`PI_MIND_DIR=${escapeRegex(otherDir)}`));
+  });
+});
+
+/** Escape a path for use inside a RegExp literal. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

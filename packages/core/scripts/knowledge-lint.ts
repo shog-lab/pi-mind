@@ -509,21 +509,23 @@ if (args.includes("--help") || args.includes("-h")) {
   process.exit(0);
 }
 
+// Resolve $PI_MIND_DIR once; used by lint, prune, and rebuild-kg.
+// Default is git-common-dir aware so running from a workspace/subdirectory still
+// targets the repo-root `.pi-mind`. `--dir` below remains an explicit override
+// for the lint/fix knowledge directory only.
+const piMindDir = process.env.PI_MIND_DIR ?? resolvePiMindDir(process.cwd());
+
 // --rebuild-kg is a self-contained mode: short-circuits the rest of the CLI.
-// PI_MIND_DIR is resolved via env-first then resolvePiMindDir (git-aware),
-// not via --dir (which keeps its existing "validate this custom dir" semantics).
+// It uses piMindDir above, not --dir (which keeps its existing
+// "validate this custom dir" semantics).
 if (REBUILD_KG) {
-  const piMindDirRebuild = process.env.PI_MIND_DIR ?? resolvePiMindDir(process.cwd());
   if (APPLY) {
-    await runRebuildKgApply(piMindDirRebuild);
+    await runRebuildKgApply(piMindDir);
   } else {
-    runRebuildKgDryRun(piMindDirRebuild);
+    runRebuildKgDryRun(piMindDir);
   }
   process.exit(0);
 }
-
-// Resolve $PI_MIND_DIR once; used by both lint (knowledge subdir) and prune (whole dir).
-const piMindDir = process.env.PI_MIND_DIR ?? path.join(process.cwd(), ".pi-mind");
 
 if (PRUNE_MODE) {
   runPrune(piMindDir, !APPLY);
