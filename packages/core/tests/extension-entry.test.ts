@@ -4,8 +4,8 @@
  * Imports `extensions/memory/index.js` (the extension entry point),
  * calls its default export with a minimal mock ExtensionAPI, and
  * asserts that:
- *   - The 4 expected tools are registered (remember_this, recall_memory,
- *     observe, mark_daily_audit_complete).
+ *   - The 5 expected tools are registered (remember_this, recall_memory,
+ *     observe, update_memory, mark_memory_audit_complete).
  *   - The 3 expected hooks are registered (session_compact, turn_end,
  *     before_agent_start).
  *   - The system-prompt injection path is invoked (mock provides
@@ -82,14 +82,17 @@ afterEach(() => {
 });
 
 describe("memory extension default export \u2014 surface", () => {
-  it("registers the 4 expected tools", () => {
+  it("registers the 5 expected tools and no legacy audit-marker alias", () => {
     const pi = makeMockPi();
     memExtension(pi);
     const names = [...pi.tools.keys()];
     expect(names).toContain("remember_this");
     expect(names).toContain("recall_memory");
     expect(names).toContain("observe");
-    expect(names).toContain("mark_daily_audit_complete");
+    expect(names).toContain("update_memory");
+    expect(names).toContain("mark_memory_audit_complete");
+    const legacyAuditTool = ["mark", "daily", "audit", "complete"].join("_");
+    expect(names).not.toContain(legacyAuditTool);
   });
 
   it("registers the 3 expected lifecycle hooks", () => {
@@ -126,10 +129,10 @@ describe("memory extension default export \u2014 surface", () => {
 });
 
 describe("memory extension \u2014 tool handler smoke", () => {
-  it("mark_daily_audit_complete tool returns a success result and writes marker", async () => {
+  it("mark_memory_audit_complete tool returns a success result and writes marker", async () => {
     const pi = makeMockPi();
     memExtension(pi);
-    const tool = pi.tools.get("mark_daily_audit_complete")!;
+    const tool = pi.tools.get("mark_memory_audit_complete")!;
     expect(tool).toBeDefined();
     const result = await tool.execute("test-id", { summary: "audit done" });
     expect(result.content[0].text).toMatch(/Memory audit marked complete/i);
@@ -236,6 +239,26 @@ describe("memory extension \u2014 tool handler smoke", () => {
     // the agent thought it wrote.
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/non-empty|whitespace/);
+  });
+
+  it("does NOT register the legacy audit marker name (regression — 0.10.0 rename was hard-cut, no alias)", () => {
+    const pi = makeMockPi();
+    memExtension(pi);
+    const legacyAuditTool = ["mark", "daily", "audit", "complete"].join("_");
+    expect(pi.tools.has(legacyAuditTool)).toBe(false);
+    expect(pi.tools.has("mark_memory_audit_complete")).toBe(true);
+  });
+
+  it("registers update_memory (regression — explicit correction path for append-only remember_this)", () => {
+    const pi = makeMockPi();
+    memExtension(pi);
+    expect(pi.tools.has("update_memory")).toBe(true);
+    const t = pi.tools.get("update_memory")!;
+    expect(t.label).toBe("Update Memory");
+    // Description must warn against the wrong paths / use cases.
+    expect(t.description).toMatch(/remember_this|observe/);
+    expect(t.description).toMatch(/raw|sessions|compaction/);
+    expect(t.description).toMatch(/old_text/);
   });
 });
 

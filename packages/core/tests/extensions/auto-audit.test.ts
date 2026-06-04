@@ -98,7 +98,7 @@ describe("renderAuditNotice", () => {
     expect(notice).toContain("<memory-maintenance>");
     expect(notice).toContain("never run");
     expect(notice).toContain("memory-audit skill");
-    expect(notice).toContain("mark_daily_audit_complete");
+    expect(notice).toContain("mark_memory_audit_complete");
   });
 
   it("renders elapsed-hours message when overdue", () => {

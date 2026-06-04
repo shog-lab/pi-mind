@@ -122,7 +122,7 @@ npx tsc -w -p packages/bus
 
 | Extension | Source dir | Purpose |
 |---|---|---|
-| `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]); tools: `remember_this` / `recall_memory` / `observe` / `mark_daily_audit_complete`. 0.6.0 removed the `worth-remembering-llm` auto-capture (memory is passive). |
+| `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]); tools: `remember_this` / `recall_memory` / `observe` / `update_memory` / `mark_memory_audit_complete`. 0.6.0 removed the `worth-remembering-llm` auto-capture (memory is passive). |
 | `skill-evolution` | `packages/core/extensions/skill-evolution/` | `create_skill` + `update_skill` tools — agent proposes in chat, gets explicit user approval, then writes `.pi/skills/<name>/SKILL.md` (with `.bak.<ts>` on overwrite). Backs the `define-skill` / `revise-skill` skills. (0.6.0 replaced the prior `write_skill` per Design Principles.) |
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |

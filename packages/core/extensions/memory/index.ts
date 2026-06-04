@@ -224,14 +224,14 @@ export default function memExtension(pi: ExtensionAPI) {
   // Memory-maintenance startup hook: surface "audit overdue" status as a context note.
   // Agent decides when to honor — typically before substantive work in this session.
   // The hook does NOT run the audit itself; memory-audit is an LLM-executed skill.
-  // Caller signals completion via mark_daily_audit_complete tool below.
-  // (Tool name is historical — will be renamed mark_memory_audit_complete in a
-  // future breaking release to match the renamed skill.)
+  // Caller signals completion via mark_memory_audit_complete tool below.
+  // No alias is registered; the memory-audit skill and system prompt use this
+  // current name directly.
   pi.registerTool({
-    name: "mark_daily_audit_complete",
+    name: "mark_memory_audit_complete",
     label: "Mark Memory Audit Complete",
     description:
-      "Call this once after running the memory-audit skill end-to-end. Updates the audit timestamp so the overdue notice is silenced for the next 24 hours. Pass an optional one-line summary that will surface in the next audit notice. (Tool name is mark_daily_audit_complete for historical reasons — skill was renamed daily-audit → memory-audit; tool will follow in next breaking release.)",
+      "Call this once after running the memory-audit skill end-to-end. Updates the audit timestamp so the overdue notice is silenced for the next 24 hours. Pass an optional one-line summary that will surface in the next audit notice.",
     parameters: { type: "object", properties: { summary: { type: "string", description: "Optional one-line summary of audit findings" } } },
     async execute(_id: string, params: { summary?: string }) {
       markAuditDone(PI_MIND_DIR, params.summary);
@@ -444,6 +444,100 @@ export default function memExtension(pi: ExtensionAPI) {
       } catch (e) {
         logMaintenance("observe-error", { error: String(e) });
         return { content: [{ type: "text" as const, text: `observe failed: ${String(e)}` }], details: {} };
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "update_memory",
+    label: "Update Memory",
+    description: [
+      "Patch a single durable knowledge entry in `.pi-mind/knowledge/*.md`.",
+      "",
+      "Use this when:",
+      "  - The USER explicitly asked to update / correct / fix a specific memory entry",
+      "  - You (the agent) decided in a visible turn that an existing knowledge",
+      "    file is wrong or outdated and needs a targeted patch (NOT a full rewrite)",
+      "",
+      "Do NOT use for:",
+      "  - Adding NEW memory (use `remember_this`)",
+      "  - Logging a quick observation (use `observe`)",
+      "  - Bulk updates or fuzzy search across multiple files (not supported)",
+      "  - Modifying raw/sessions/compaction files (denied; those are the event stream)",
+      "  - Modifying files outside `.pi-mind/knowledge/` (denied; containment check)",
+      "",
+      "Parameters:",
+      "  - file_path: absolute path, OR PI_MIND_DIR-relative path",
+      "    (e.g. '.pi-mind/knowledge/foo.md' or 'knowledge/foo.md'),",
+      "    OR knowledgeDir-relative path (e.g. 'foo.md'). The resolver tries",
+      "    all three anchors in turn and uses the first whose realpath lands",
+      "    inside .pi-mind/knowledge/.",
+      "  - old_text: exact substring to replace; must match exactly ONCE in the file",
+      "  - new_text: replacement string. MUST differ from old_text — no-op",
+      "    patches (new_text === old_text) are rejected with isError so the",
+      "    'updated' timestamp is not silently bumped on a no-op.",
+      "  - reason: optional short note for the audit trail. Sanitized: any",
+      "    whitespace is folded to a single space, leading/trailing trimmed,",
+      "    capped at 200 chars, and `---` (frontmatter delimiter) is rejected.",
+      "    Recorded in frontmatter as `update_reason`.",
+      "",
+      "Behavior:",
+      "  - old_text must match exactly once; 0 or >1 matches → isError, file unchanged",
+      "  - new_text === old_text → isError (no-op patch rejected)",
+      "  - Path is canonicalized and verified to be inside knowledgeDir; raw/, sessions/, compaction/, .., or symlink-escape all denied",
+      "  - Existing frontmatter (triples, tags, source, image) is preserved",
+      "  - `updated: <ISO>` is added/replaced in frontmatter; `update_reason: <sanitized-reason>` added if reason provided and non-empty after sanitization",
+      "  - syncIndex is called after the write so FTS / vector / KG indexes reflect the change; if syncIndex fails, the operation reports an error (not silent)",
+    ].join("\n"),
+    parameters: {
+      type: "object",
+      properties: {
+        file_path: { type: "string", description: "Absolute, PI_MIND_DIR-relative ('.pi-mind/knowledge/foo.md' or 'knowledge/foo.md'), or knowledgeDir-relative ('foo.md') path. Resolver tries all three anchors." },
+        old_text: { type: "string", description: "Exact substring to replace. Must match exactly once in the file; 0 or >1 matches is an error." },
+        new_text: { type: "string", description: "Replacement string. MUST differ from old_text — no-op patches are rejected with isError." },
+        reason: { type: "string", description: "Optional short note recorded in the file's frontmatter as `update_reason`. Sanitized: whitespace folded, capped at 200 chars, '---' rejected." },
+      },
+      required: ["file_path", "old_text", "new_text"],
+    },
+    async execute(_id: string, params: { file_path: string; old_text: string; new_text: string; reason?: string }) {
+      try {
+        const result = await getCore().updateMemory({
+          filePath: params.file_path,
+          oldText: params.old_text,
+          newText: params.new_text,
+          reason: params.reason,
+        });
+        if (!result.ok) {
+          return {
+            content: [{ type: "text" as const, text: `update_memory failed: ${result.error}` }],
+            details: { error: result.error },
+            isError: true as const,
+          };
+        }
+        // Use the SANITIZED reason returned by core — not the raw input —
+        // so the displayed reason and the on-disk reason match. When
+        // the sanitized reason is undefined (no reason provided, or
+        // sanitized to empty, e.g. pure whitespace input), we don't
+        // include a "(reason: ...)" clause at all.
+        const sanitizedReason = result.sanitizedReason;
+        const msg = sanitizedReason
+          ? `Updated ${result.filePath} (reason: ${sanitizedReason})`
+          : `Updated ${result.filePath}`;
+        logMaintenance("update-memory", {
+          filePath: result.filePath,
+          hasReason: sanitizedReason !== undefined,
+          reason: sanitizedReason,
+        });
+        return {
+          content: [{ type: "text" as const, text: msg }],
+          details: { reason: sanitizedReason },
+        };
+      } catch (e) {
+        return {
+          content: [{ type: "text" as const, text: `update_memory failed: ${e instanceof Error ? e.message : String(e)}` }],
+          details: {},
+          isError: true as const,
+        };
       }
     },
   });

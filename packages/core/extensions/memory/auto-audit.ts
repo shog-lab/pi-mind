@@ -13,8 +13,7 @@
  *
  * Mark-as-done is exposed as a tool the memory-audit skill calls at the end
  * of its workflow; that's the one and only writer of this file. The tool is
- * named `mark_daily_audit_complete` for historical reasons (will be renamed
- * `mark_memory_audit_complete` in a future breaking release).
+ * named `mark_memory_audit_complete` to match the skill's current name.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -143,7 +142,7 @@ export function renderAuditNotice(status: AuditStatus, tokenSummary?: TokenSumma
   }
   lines.push(
     "Suggest: run `use memory-audit skill` before substantive work in this session.",
-    "When done, call mark_daily_audit_complete(summary?) to silence this notice for 24h.",
+    "When done, call mark_memory_audit_complete(summary?) to silence this notice for 24h.",
   );
   lines.push("</memory-maintenance>");
   return lines.join("\n");

@@ -19,11 +19,12 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative, basename } from "node:path";
+import { isAbsolute, basename, dirname, join, relative, resolve as resolvePath } from "node:path";
 import Database from "better-sqlite3";
 import { KnowledgeGraph } from "./knowledge-graph.js";
 import { LEGACY_L1_TYPES, Subject, Tier } from "../../lib/schema.js";
@@ -201,7 +202,15 @@ export function parseFrontmatter(raw: string): { meta: Frontmatter; body: string
     if (colonIdx === -1) continue;
     const key = trimmed.slice(0, colonIdx).trim();
     const rawValue = trimmed.slice(colonIdx + 1).trim();
-    if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
+    if (key === "triples") {
+      // Special-case: triples is a JSON-encoded array of [s, p, o] tuples.
+      // The generic [...] branch below would slice off the outer brackets
+      // and split on commas, which shreds the inner tuples. Keep the
+      // value as an opaque string; parseTriplesFromFrontmatter() does
+      // the JSON.parse() on read. This makes frontmatter roundtrip-stable
+      // through tools like updateMemory that read+rewrite the file.
+      meta[key] = rawValue;
+    } else if (rawValue.startsWith("[") && rawValue.endsWith("]")) {
       meta[key] = rawValue.slice(1, -1).split(",").map((s) => s.trim()).filter(Boolean);
     } else {
       meta[key] = rawValue;
@@ -1185,6 +1194,274 @@ export class MemoryCore {
         // two files share an RRF score (e.g. one hit per list, same rank).
         return a.entry.filePath.localeCompare(b.entry.filePath);
       });
+  }
+
+  // --- Explicit memory update (patch-style) ---
+  //
+  // remember_this is append-only: the only way to "fix" a wrong fact was to
+  // re-save with a different dedup hash (leaving the wrong file on disk) or
+  // to ask the user to manually edit the .md file. update_memory closes that
+  // gap with a patch-style operation: exact-match replace old_text → new_text
+  // in a single knowledge/*.md file, then refresh the indexes.
+  //
+  // Path safety: realpath() must land inside knowledgeDir after symlink
+  // resolution, and the file must be a .md. raw/, sessions/, compaction/,
+  // and any path outside the knowledge dir are rejected — even via .. or
+  // symlink. The tool surface in the extension layer repeats this check on
+  // the user-supplied path so the agent can't reach in via a tricky string.
+  //
+  // Frontmatter preservation: existing frontmatter (triples, tags, source,
+  // image) is read, augmented with `updated: <ISO>` (and `update_reason:
+  // <reason>` if provided), and re-serialized. If the file has no
+  // frontmatter, one is added.
+  //
+  // Idempotency / failure: syncIndex is invoked after the write. If it
+  // throws, the operation reports an error — we don't silently leave the
+  // file in a state where the on-disk text differs from the indexes.
+
+  /**
+   * Update a single knowledge/*.md file via exact-match replace.
+   * Returns a structured result; ok=false carries a human-readable error.
+   */
+  async updateMemory(input: {
+    filePath: string;
+    oldText: string;
+    newText: string;
+    reason?: string;
+  }): Promise<{
+    ok: boolean;
+    error?: string;
+    filePath?: string;
+    /**
+     * The reason that was actually written to frontmatter (post-sanitization).
+     * undefined when no reason was provided OR sanitized to empty (e.g.
+     * pure whitespace). Callers (e.g. the extension layer) MUST use this
+     * value, not the raw input reason, for success messages and audit
+     * logs — otherwise the displayed reason and the on-disk reason
+     * diverge whenever sanitization transformed the input.
+     */
+    sanitizedReason?: string;
+  }> {
+    return withGroupLock(this.groupDir, async () => {
+      // 1. Path resolution + containment check.
+      const resolved = this.resolveKnowledgeFilePath(input.filePath);
+      if (!resolved.ok) return { ok: false, error: resolved.error, filePath: undefined };
+      const absPath = resolved.path;
+
+      // 2. old_text sanity: must be non-empty (indexOf("") returns 0, count=∞).
+      if (input.oldText.length === 0) {
+        return { ok: false, error: "old_text must be non-empty" };
+      }
+
+      // 3. No-op patch: new_text === old_text means nothing changes but
+      //    the tool would still touch the file (rewrite frontmatter with
+      //    a new `updated` timestamp), which is misleading — the user
+      //    would think the file was updated when nothing content-wise
+      //    changed. Reject explicitly. The agent should either pass a
+      //    different new_text or not call this tool at all.
+      if (input.newText === input.oldText) {
+        return {
+          ok: false,
+          error: "new_text is identical to old_text (no-op patches are rejected — pass a different new_text to actually update the file, or omit the patch entirely)",
+        };
+      }
+
+      // 4. Sanitize reason: single-line, length-capped, no frontmatter
+      //    delimiter. Newlines/tabs are folded to a single space; trailing
+      //    whitespace is trimmed. The result is a clean one-liner that
+      //    can't break the file's frontmatter.
+      const reasonResult = this.sanitizeReason(input.reason);
+      if (!reasonResult.ok) {
+        return { ok: false, error: reasonResult.error };
+      }
+
+      // 5. Read current content.
+      let content: string;
+      try {
+        content = readFileSync(absPath, "utf-8");
+      } catch (e) {
+        return {
+          ok: false,
+          error: `read failed: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+
+      // 6. Count old_text occurrences. Must be exactly 1.
+      const occurrences = this.countOccurrences(content, input.oldText);
+      if (occurrences === 0) {
+        return { ok: false, error: "old_text not found in file (0 matches)" };
+      }
+      if (occurrences > 1) {
+        return {
+          ok: false,
+          error: `old_text matches ${occurrences} times in file — must be unique. Add more surrounding context to disambiguate.`,
+        };
+      }
+
+      // 7. Patch: exact replace (only one occurrence per the check above).
+      const patched = content.replace(input.oldText, input.newText);
+
+      // 8. Frontmatter: read existing, augment with `updated` (+ sanitized
+      //    reason), re-serialize. If the file has no frontmatter, parseFrontmatter
+      //    returns empty meta — we still emit one with the updated field.
+      const { meta, body } = parseFrontmatter(patched);
+      meta.updated = new Date().toISOString();
+      if (reasonResult.sanitized !== undefined) {
+        meta.update_reason = reasonResult.sanitized;
+      }
+      const finalContent = serializeFrontmatter(meta, body);
+
+      // 7. Write the patched file.
+      try {
+        writeFileSync(absPath, finalContent, "utf-8");
+      } catch (e) {
+        return {
+          ok: false,
+          error: `write failed: ${e instanceof Error ? e.message : String(e)}`,
+        };
+      }
+
+      // 8. Refresh indexes (FTS5, vector, KG). The KG rebuild is
+      //    SoT-derived (re-parses every knowledge/*.md), so a triples
+      //    change in the patched file is reflected immediately. A
+      //    syncIndex failure is NOT a silent success — surface it.
+      try {
+        await this.syncIndex();
+      } catch (e) {
+        return {
+          ok: false,
+          error: `syncIndex failed after write: ${e instanceof Error ? e.message : String(e)}. The on-disk file was updated; the FTS/vector/KG index may be stale — re-run syncIndex.`,
+          filePath: absPath,
+        };
+      }
+
+      return { ok: true, filePath: absPath, sanitizedReason: reasonResult.sanitized };
+    });
+  }
+
+  /**
+   * Resolve a user-supplied file path to an absolute path under
+   * knowledgeDir, with containment + symlink + extension checks.
+   * Returns ok=false with a human-readable error if anything is off.
+   *
+   * Accepts THREE forms (any one is enough; the resolver tries them in
+   * order and uses the first one whose realpath lands inside
+   * knowledgeDir):
+   *
+   *   1. Absolute path  — used as-is. Must be inside knowledgeDir after
+   *      canonicalize (realpath follows symlinks).
+   *   2. PI_MIND_DIR-relative  — e.g. "knowledge/foo.md" or
+   *      ".pi-mind/knowledge/foo.md" (the full path the user sees in
+   *      their repo). Resolved against groupDir's parent dirname
+   *      first (cwd-style), then against groupDir itself.
+   *   3. knowledgeDir-relative  — e.g. "alice.md". Resolved against
+   *      knowledgeDir.
+   *
+   * Rejects:
+   *   - non-.md files
+   *   - any path that escapes knowledgeDir (e.g. ../, symlink to outside)
+   *   - paths inside raw/, sessions/, compaction/ (those are not knowledge)
+   *   - non-existent files
+   */
+  private resolveKnowledgeFilePath(
+    inputPath: string,
+  ): { ok: true; path: string } | { ok: false; error: string } {
+    if (typeof inputPath !== "string" || inputPath.length === 0) {
+      return { ok: false, error: "file_path must be a non-empty string" };
+    }
+
+    // Build candidate absolute paths in priority order. The first one
+    // whose realpath resolves to a file inside knowledgeDir wins.
+    // - absolute: use as-is
+    // - relative: try dirname(groupDir) (= host root) first to handle
+    //   "from-cwd" paths like ".pi-mind/knowledge/foo.md"; then
+    //   groupDir itself (for "knowledge/foo.md"); then knowledgeDir
+    //   (for "foo.md").
+    const candidates: string[] = [];
+    if (isAbsolute(inputPath)) {
+      candidates.push(inputPath);
+    } else {
+      const hostRoot = dirname(this.groupDir);
+      candidates.push(resolvePath(hostRoot, inputPath));
+      candidates.push(resolvePath(this.groupDir, inputPath));
+      candidates.push(resolvePath(this.knowledgeDir, inputPath));
+    }
+
+    // Containment target: the realpath of knowledgeDir. Computed
+    // once; if knowledgeDir doesn't exist, we can't safely do containment.
+    let knowledgeReal: string;
+    try {
+      knowledgeReal = realpathSync(this.knowledgeDir);
+    } catch {
+      return { ok: false, error: "knowledgeDir does not exist" };
+    }
+
+    // Try each candidate. first one that canonicalizes to a real file
+    // inside knowledgeDir is accepted. None-match → "escapes knowledgeDir".
+    for (const candidate of candidates) {
+      let real: string;
+      try {
+        real = realpathSync(candidate);
+      } catch {
+        continue; // candidate doesn't exist (ENOENT) — try the next anchor
+      }
+
+      const rel = relative(knowledgeReal, real);
+      if (rel.startsWith("..") || isAbsolute(rel) || rel === "..") {
+        continue; // not inside knowledgeDir — try next anchor
+      }
+
+      if (!real.endsWith(".md")) {
+        return { ok: false, error: `not a .md file: ${inputPath}` };
+      }
+      return { ok: true, path: real };
+    }
+
+    return {
+      ok: false,
+      error: `file_path escapes knowledgeDir: ${inputPath}`,
+    };
+  }
+
+  /** Count non-overlapping occurrences of needle in haystack. */
+  private countOccurrences(haystack: string, needle: string): number {
+    if (needle.length === 0) return 0;
+    let count = 0;
+    let idx = 0;
+    while ((idx = haystack.indexOf(needle, idx)) !== -1) {
+      count++;
+      idx += needle.length;
+    }
+    return count;
+  }
+
+  /**
+   * Sanitize the optional `reason` field before writing it into
+   * frontmatter as `update_reason`. Rules:
+   *   - whitespace (any run of \s) is folded to a single space — kills
+   *     newlines/tabs that would otherwise break the YAML one-liner;
+   *   - leading/trailing whitespace is trimmed;
+   *   - result is capped at REASON_MAX chars (200) so a runaway
+   *     verbose reason doesn't bloat the file;
+   *   - any literal `---` substring is rejected — that's the frontmatter
+   *     delimiter and would break the file's parse on next read;
+   *   - a sanitized empty string is treated as "no reason provided"
+   *     (sanitized = undefined) so the update_reason field is omitted
+   *     entirely rather than written as `update_reason: `.
+   */
+  private sanitizeReason(reason: string | undefined): { ok: true; sanitized: string | undefined } | { ok: false; error: string } {
+    const REASON_MAX = 200;
+    if (reason === undefined) return { ok: true, sanitized: undefined };
+    if (typeof reason !== "string") {
+      return { ok: false, error: "reason must be a string" };
+    }
+    let s = reason.replace(/\s+/g, " ").trim();
+    if (s.length > REASON_MAX) s = s.slice(0, REASON_MAX);
+    if (s.includes("---")) {
+      return { ok: false, error: "reason cannot contain '---' (frontmatter delimiter)" };
+    }
+    if (s.length === 0) return { ok: true, sanitized: undefined };
+    return { ok: true, sanitized: s };
   }
 
   // --- Cleanup ---

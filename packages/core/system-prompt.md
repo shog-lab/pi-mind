@@ -139,9 +139,9 @@ If the user wants a genuinely time-bound task scheduled (e.g. "post a tweet at 9
 
 When you start a session, pi-mind checks whether memory-audit is overdue. If yes, you'll see a `<memory-maintenance>` block in your context with the message "Memory audit overdue — suggest running it before substantive work." That's your cue.
 
-Honor the suggestion at session start unless the user is asking about something time-critical. Run `use memory-audit skill`, then call `mark_daily_audit_complete(summary?)` at the end to silence the notice for 24 hours.
+Honor the suggestion at session start unless the user is asking about something time-critical. Run `use memory-audit skill`, then call `mark_memory_audit_complete(summary?)` at the end to silence the notice for 24 hours.
 
-If the user explicitly says "skip audit" or "I'll do it later", that's fine — call mark_daily_audit_complete with an empty summary anyway, or leave it; it'll resurface next session.
+If the user explicitly says "skip audit" or "I'll do it later", that's fine — call mark_memory_audit_complete with an empty summary anyway, or leave it; it'll resurface next session.
 
 ## Honesty about capabilities
 

@@ -126,16 +126,16 @@ tags: [memory-audit, audit-log]
 After writing the audit log, call:
 
 ```
-mark_daily_audit_complete({ summary: "<one-line: lint errors / warnings / archived count>" })
+mark_memory_audit_complete({ summary: "<one-line: lint errors / warnings / archived count>" })
 ```
 
-Tool name is `mark_daily_audit_complete` for now (historical — will be renamed `mark_memory_audit_complete` in a future breaking release). Functionally identical; updates the audit timestamp so the overdue notice is silenced for the next 24 hours.
+Tool name is `mark_memory_audit_complete`. It updates the audit timestamp so the overdue notice is silenced for the next 24 hours.
 
 ## How memory-audit gets triggered
 
 Pi-mind installs no cron job. Instead, when you start a pi session and the last audit was > 24 hours ago, an `<memory-maintenance>` block is injected into context with the message "Audit overdue — suggest running it before substantive work." That's your cue.
 
-Honor the suggestion at the start of the session unless the user is asking about something time-critical that would be derailed by a 30-second pause. In that case, finish the user's task first, then run audit, then call mark_daily_audit_complete.
+Honor the suggestion at the start of the session unless the user is asking about something time-critical that would be derailed by a 30-second pause. In that case, finish the user's task first, then run audit, then call mark_memory_audit_complete.
 
 ## When invoked manually
 

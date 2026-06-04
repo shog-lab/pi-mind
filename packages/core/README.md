@@ -206,7 +206,7 @@ memory extension initializes:
     derived, rebuildable index)
   - registers hooks: before_agent_start / turn_end / session_compact
   - registers tools: remember_this, observe, recall_memory,
-                     mark_daily_audit_complete
+                     update_memory, mark_memory_audit_complete
     (no forget_memory tool — old memories drop via retention policy in
     lib/forget.ts, auto-run every 50 writes; for emergency manual prune
     use the CLI: `npx pi-mind-lint --prune --apply`)
