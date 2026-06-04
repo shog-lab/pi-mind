@@ -5,8 +5,12 @@
  *
  * Run:
  *   npx pi-mind-lint                       # validate $PI_MIND_DIR/knowledge
- *   npx pi-mind-lint --fix                 # auto-fix
+ *   npx pi-mind-lint --fix                 # auto-fix schema
  *   npx pi-mind-lint --dry-run --fix       # preview fixes
+ *   npx pi-mind-lint --prune               # show what would be deleted (dry-run by default)
+ *   npx pi-mind-lint --prune --apply       # really delete stale memories + raw files
+ *   npx pi-mind-lint --rebuild-kg          # preview KG rebuild stats (dry-run, no DB)
+ *   npx pi-mind-lint --rebuild-kg --apply  # wipe + re-derive kg_* from knowledge/*.md
  *   npx pi-mind-lint --dir <abs-path>      # validate a custom dir
  */
 
@@ -15,6 +19,8 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { VALID_SUBJECTS, VALID_TIERS, LEGACY_L1_TYPES, LEGACY_TYPE_MAP, normalizeSubject, validateTriples } from "../lib/schema.js";
 import { forgetOldMemories, resetForgetCounter, type ForgetResult } from "../lib/forget.js";
+import { MemoryCore, withGroupLock } from "../extensions/memory/core.js";
+import { resolvePiMindDir } from "@shog-lab/pi-utils";
 
 // --- Frontmatter parser ---
 
@@ -391,22 +397,128 @@ function runLint(knowledgeDir: string, fixMode: boolean, dryRun: boolean): void 
   }
 }
 
+// --- Rebuild KG (--rebuild-kg) ---
+
+interface RebuildKgStats {
+  knowledgeFiles: number;
+  filesWithTriples: number;
+  triplesCount: number;
+}
+
+/**
+ * Dry-run: scan $PI_MIND_DIR/knowledge/*.md (excluding index.md) and
+ * tally what a real rebuild would index. No DB touched. Uses the local
+ * parseFrontmatter + JSON.parse + validateTriples — no need to spin up
+ * MemoryCore or export the class method parseTriplesFromFrontmatter.
+ */
+function runRebuildKgDryRun(piMindDir: string): RebuildKgStats {
+  const knowledgeDir = path.join(piMindDir, "knowledge");
+  const stats: RebuildKgStats = { knowledgeFiles: 0, filesWithTriples: 0, triplesCount: 0 };
+
+  if (!fs.existsSync(knowledgeDir)) {
+    console.log(`pi-mind-lint --rebuild-kg (DRY-RUN)  PI_MIND_DIR=${piMindDir}`);
+    console.log(`Knowledge directory not found: ${knowledgeDir}`);
+    return stats;
+  }
+
+  // Same collection + index.md filter as runLint() — recursive .md walk
+  // that drops the auto-generated index.md (system file, not a knowledge
+  // entry). basename() is exact so `fooindex.md` is not affected. Mirrors
+  // the filter inside MemoryCore.rebuildKGFromFiles() so dry-run counts
+  // and apply ingest counts agree.
+  const files = collectFiles(knowledgeDir).filter(
+    (f) => path.basename(f) !== "index.md",
+  );
+  stats.knowledgeFiles = files.length;
+
+  for (const filePath of files) {
+    let raw: string;
+    try { raw = fs.readFileSync(filePath, "utf-8"); } catch { continue; }
+    const { meta } = parseFrontmatter(raw);
+    const rawTriples = meta.triples;
+    if (rawTriples === undefined) continue;
+    // parseFrontmatter keeps the `triples:` value as an opaque string
+    // (the generic [...] branch would shred the inner JSON tuples).
+    const str = typeof rawTriples === "string" ? rawTriples : String(rawTriples);
+    let parsed: unknown;
+    try { parsed = JSON.parse(str); } catch { continue; }
+    const v = validateTriples(parsed);
+    if (!v.valid || !Array.isArray(parsed)) continue;
+    stats.filesWithTriples += 1;
+    stats.triplesCount += parsed.length;
+  }
+
+  console.log(`pi-mind-lint --rebuild-kg (DRY-RUN)  PI_MIND_DIR=${piMindDir}`);
+  console.log(`  Knowledge files:           ${stats.knowledgeFiles}`);
+  console.log(`  Files with triples:        ${stats.filesWithTriples}`);
+  console.log(`  Triples that would index:  ${stats.triplesCount}`);
+  return stats;
+}
+
+/**
+ * Apply: take withGroupLock(piMindDir), wipe kg_triples + kg_entities,
+ * re-derive from each knowledge/*.md file, print before/after stats.
+ * Does NOT touch FTS / vector indexes — KG only, by design.
+ */
+async function runRebuildKgApply(piMindDir: string): Promise<void> {
+  console.log(`pi-mind-lint --rebuild-kg (APPLY)  PI_MIND_DIR=${piMindDir}`);
+
+  await withGroupLock(piMindDir, async () => {
+    const dbPath = path.join(piMindDir, ".pi-mind-index.db");
+    const mc = new MemoryCore({ groupDir: piMindDir, dbPath });
+    try {
+      const before = mc.kg.stats();
+      console.log(
+        `  Before: entities=${before.entities} triples=${before.triples} ` +
+        `currentFacts=${before.currentFacts} expiredFacts=${before.expiredFacts}`,
+      );
+      const result = mc.rebuildKGFromFiles();
+      const after = mc.kg.stats();
+      console.log(
+        `  After:  entities=${after.entities} triples=${after.triples} ` +
+        `currentFacts=${after.currentFacts} expiredFacts=${after.expiredFacts}`,
+      );
+      console.log(
+        `  Ingested: triples=${result.triples} entities=${result.entities}`,
+      );
+    } finally {
+      mc.close();
+    }
+  });
+}
+
 // --- CLI ---
 
 const args = process.argv.slice(2);
 const FIX_MODE = args.includes("--fix");
 const DRY_RUN = args.includes("--dry-run");
 const PRUNE_MODE = args.includes("--prune");
+const REBUILD_KG = args.includes("--rebuild-kg");
 const APPLY = args.includes("--apply");
 
 if (args.includes("--help") || args.includes("-h")) {
   console.error("Usage:");
-  console.error("  npx pi-mind-lint                       # validate $PI_MIND_DIR/knowledge");
-  console.error("  npx pi-mind-lint --fix                 # auto-fix schema");
-  console.error("  npx pi-mind-lint --dry-run --fix       # preview fixes");
-  console.error("  npx pi-mind-lint --prune               # show what would be deleted (dry-run by default)");
-  console.error("  npx pi-mind-lint --prune --apply       # really delete stale memories + raw files");
-  console.error("  npx pi-mind-lint --dir <abs-path>      # validate a custom dir");
+  console.error("  npx pi-mind-lint                          # validate $PI_MIND_DIR/knowledge");
+  console.error("  npx pi-mind-lint --fix                    # auto-fix schema");
+  console.error("  npx pi-mind-lint --dry-run --fix          # preview fixes");
+  console.error("  npx pi-mind-lint --prune                  # show what would be deleted (dry-run by default)");
+  console.error("  npx pi-mind-lint --prune --apply          # really delete stale memories + raw files");
+  console.error("  npx pi-mind-lint --rebuild-kg             # preview KG rebuild (dry-run, no DB)");
+  console.error("  npx pi-mind-lint --rebuild-kg --apply     # wipe + re-derive kg_* from knowledge/*.md");
+  console.error("  npx pi-mind-lint --dir <abs-path>         # validate a custom dir");
+  process.exit(0);
+}
+
+// --rebuild-kg is a self-contained mode: short-circuits the rest of the CLI.
+// PI_MIND_DIR is resolved via env-first then resolvePiMindDir (git-aware),
+// not via --dir (which keeps its existing "validate this custom dir" semantics).
+if (REBUILD_KG) {
+  const piMindDirRebuild = process.env.PI_MIND_DIR ?? resolvePiMindDir(process.cwd());
+  if (APPLY) {
+    await runRebuildKgApply(piMindDirRebuild);
+  } else {
+    runRebuildKgDryRun(piMindDirRebuild);
+  }
   process.exit(0);
 }
 

@@ -1003,6 +1003,12 @@ export class MemoryCore {
     // 2. Re-derive from each knowledge/*.md file's frontmatter.
     let totalTriples = 0;
     for (const filePath of collectMdFiles(targetDir)) {
+      // Skip the auto-generated index.md (system file, not a knowledge
+      // entry). basename() is exact, so `fooindex.md` is not affected.
+      // Matches the dry-run filter in knowledge-lint --rebuild-kg so
+      // preview counts and apply ingest counts agree even when a stale
+      // or hand-edited index.md carries a `triples:` field.
+      if (basename(filePath) === "index.md") continue;
       let raw: string;
       try { raw = readFileSync(filePath, "utf-8"); } catch { continue; }
       const { meta } = parseFrontmatter(raw);
