@@ -12,7 +12,7 @@
   "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/core",
   "bugs": "https://github.com/shog-lab/pi-mind/issues",
   "scripts": {
-    "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json'",
+    "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json' && cp dist/lib/init.js bin/init-lib.js",
     "dev": "tsc --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
     "eval": "tsx eval/cli.ts",

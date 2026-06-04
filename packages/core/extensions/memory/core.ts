@@ -967,16 +967,34 @@ export class MemoryCore {
       parts.push(l1Lines.join("\n"));
     }
 
-    // L2/L3: Vector search (primary), FTS5 (fallback)
+    // L2/L3: Hybrid vector + FTS5 search, merged via RRF.
+    // Both run in parallel — we don't fall back from one to the other anymore.
+    // Reasoning: FTS5 catches exact-term / rare-token matches that vector
+    // embeddings smooth away; vector catches semantic paraphrases that FTS5
+    // can't tokenize. Each catches what the other misses, so we want both.
+    // A doc that BOTH retrieve is more likely relevant (RRF boosts it).
+    //
     // Even when skipL1 is true we still load L1 paths so L2 search results
     // don't re-emit content the agent already has in its injected L1 block.
     const l1Paths = new Set(l1Entries.map((e) => e.filePath));
     await this.flushEmbeddings();
-    let searchResults = await this.searchVector(query);
-    if (searchResults.length === 0) {
-      searchResults = await this.searchFTS5(query);
+    const [vectorResults, ftsResults] = await Promise.all([
+      this.searchVector(query),
+      this.searchFTS5(query),
+    ]);
+    let searchResults = this.mergeHybridResults(vectorResults, ftsResults);
+    // Enforce the per-turn token cap on the merged list. We can't easily
+    // cap before merge (don't know the union size) and shouldn't cap each
+    // list independently (would drop FTS hits just because vector was lucky).
+    const cappedAfterL1Filter = searchResults.filter((r) => !l1Paths.has(r.entry.filePath));
+    let tokenUsed = 0;
+    searchResults = [];
+    for (const r of cappedAfterL1Filter) {
+      const tokens = estimateTokens(r.entry.content);
+      if (tokenUsed + tokens > this.maxInjectTokens && searchResults.length > 0) break;
+      searchResults.push(r);
+      tokenUsed += tokens;
     }
-    searchResults = searchResults.filter((r) => !l1Paths.has(r.entry.filePath));
 
     if (searchResults.length > 0) {
       const lines = ["<long-term-memory>"];
@@ -1028,6 +1046,65 @@ export class MemoryCore {
   /** Build knowledge graph context block for a query (delegates to KG) */
   buildKGContext(query: string): string {
     return this.kg.buildContext(query);
+  }
+
+  // --- Hybrid merge ---
+
+  /**
+   * Merge vector-search results and FTS5 results via Reciprocal Rank Fusion.
+   *
+   * Why RRF and not score-addition: vector returns cosine similarity in
+   * roughly [0, 1], FTS5 returns -bm25() which can be any positive number
+   * depending on corpus size. Adding them is meaningless; the relative
+   * ordering within each list is what matters.
+   *
+   * RRF score for a doc = Σ 1 / (k + rank_in_list), summed across both
+   * lists. k=60 is the constant from the original paper (Cormack et al.
+   * 2009) — robust, no tuning needed.
+   *
+   * Dedup is automatic: a filePath that appears in both lists gets its
+   * RRF contributions summed (boosting files that BOTH retrieval signals
+   * agree are relevant). Order ties broken by `sources` alphabetical so
+   * the merge is deterministic across runs.
+   */
+  mergeHybridResults(
+    vectorResults: SearchResult[],
+    ftsResults: SearchResult[],
+    opts: { k?: number } = {},
+  ): SearchResult[] {
+    const k = opts.k ?? 60;
+    interface Merged {
+      entry: MemoryEntry;
+      rrfScore: number;
+      sources: string[]; // for tie-break determinism
+    }
+    const byPath = new Map<string, Merged>();
+
+    const fuse = (list: SearchResult[], source: string) => {
+      list.forEach((r, i) => {
+        const path = r.entry.filePath;
+        const rrfScore = 1 / (k + i + 1);
+        const existing = byPath.get(path);
+        if (existing) {
+          existing.rrfScore += rrfScore;
+          existing.sources.push(source);
+        } else {
+          byPath.set(path, { entry: r.entry, rrfScore, sources: [source] });
+        }
+      });
+    };
+
+    fuse(vectorResults, "vector");
+    fuse(ftsResults, "fts");
+
+    return [...byPath.values()]
+      .map((m): SearchResult => ({ entry: m.entry, score: m.rrfScore }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        // Deterministic tie-break: filePath ascending. Avoids flakiness when
+        // two files share an RRF score (e.g. one hit per list, same rank).
+        return a.entry.filePath.localeCompare(b.entry.filePath);
+      });
   }
 
   // --- Cleanup ---
