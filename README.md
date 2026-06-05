@@ -4,7 +4,7 @@
 
 > v0.13.1 · 296 tests passing · dogfooded on this repo · MIT
 
-A monorepo of capability packages for [pi](https://github.com/earendil-works/pi) (the coding-agent runtime). pi-mind turns any repo into a persistent, self-maintaining knowledge store: the agent writes memories as markdown files with YAML frontmatter, retrieves them by relevance, and never changes future behavior without an approval gate; memory writes happen as visible explicit tool calls.
+A monorepo of capability packages for [pi](https://github.com/earendil-works/pi) (the coding-agent runtime). pi-mind turns any repo into a persistent, self-maintaining knowledge store: the agent writes memories as markdown files with YAML frontmatter, retrieves them by relevance, and never changes future behavior without explicit user approval; memory writes happen as visible explicit tool calls.
 
 ## What you get
 
