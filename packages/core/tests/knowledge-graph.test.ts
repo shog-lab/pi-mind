@@ -217,6 +217,72 @@ describe('KnowledgeGraph', () => {
       const ctx = kg.buildContext('天气怎么样');
       expect(ctx).toBe('');
     });
+
+    it("matches 'auth-service' via the 'auth' query token (token-prefix)", () => {
+      // Regression for the previous substring contract: query "alice auth"
+      // must still surface a triple whose object is the hyphenated entity
+      // "auth-service". Under the new token-bounded logic this is exact
+      // token match (index has "auth" because "auth-service" tokenizes to
+      // ["auth", "service"]).
+      kg.addTriple('alice', 'owns', 'auth-service');
+      const ctx = kg.buildContext('alice auth');
+      expect(ctx).toContain('<knowledge-graph>');
+      expect(ctx).toContain('auth-service');
+    });
+
+    it("does NOT match 'oauth_token' via the 'auth' query token (no arbitrary substring)", () => {
+      // "oauth_token" tokenizes to ["oauth", "token"]. The query "auth"
+      // is neither an exact match nor a prefix of either token. Under
+      // the old substring logic it WOULD have matched (auth is a
+      // substring of oauth_token). Pinning the new contract.
+      kg.addTriple('user', 'uses', 'oauth_token');
+      const ctx = kg.buildContext('auth');
+      expect(ctx).not.toContain('oauth_token');
+      expect(ctx).toBe('');
+    });
+
+    it("does NOT noise-match 'island' or 'go-service' on query 'what is going on'", () => {
+      // "what", "is", "on" are KG_STOPWORDS and are filtered before the
+      // lookup. The only surviving query token is "going" (length 6,
+      // ≥ 3, so prefix is checked too). "island" doesn't start with
+      // "going" and "go-service" tokenizes to ["go", "service"] — neither
+      // starts with "going". The old substring logic would have
+      // substring-matched all three (any query that contains the
+      // letters of a short entity name triggered a match).
+      kg.addTriple('trip', 'destination', 'island');
+      kg.addTriple('svc', 'kind', 'go-service');
+      const ctx = kg.buildContext('what is going on');
+      expect(ctx).not.toContain('island');
+      expect(ctx).not.toContain('go-service');
+      expect(ctx).toBe('');
+    });
+
+    it('entity index cache reflects new entities after addTriple', () => {
+      // First addTriple forces the index to build on the next
+      // buildContext. A second addTriple for a new entity must be
+      // visible after the cache is invalidated, proving the
+      // addTriple -> invalidateEntityIndexCache() hook fires.
+      kg.addTriple('alice', 'owns', 'book');
+      const first = kg.buildContext('alice');
+      expect(first).toContain('alice');
+      // New entity 'bob' arrives after the index was built.
+      kg.addTriple('bob', 'likes', 'pizza');
+      const second = kg.buildContext('bob pizza');
+      expect(second).toContain('bob');
+      expect(second).toContain('pizza');
+    });
+
+    it('invalidateEntityIndexCache is a public method that clears the cache', () => {
+      kg.addTriple('alice', 'owns', 'book');
+      // Warm the index by calling buildContext.
+      kg.buildContext('alice');
+      // Now manually invalidate. Next buildContext must still work
+      // (proves the rebuild path) and must not surface phantom data.
+      kg.invalidateEntityIndexCache();
+      const ctx = kg.buildContext('alice');
+      expect(ctx).toContain('alice');
+      expect(ctx).toContain('book');
+    });
   });
 
   describe('stats', () => {

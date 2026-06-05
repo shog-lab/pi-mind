@@ -1000,6 +1000,12 @@ export class MemoryCore {
     this.db.exec("DELETE FROM kg_triples;");
     this.db.exec("DELETE FROM kg_entities;");
 
+    // Drop the in-memory KG entity index. addTriple() below would also
+    // invalidate it (per-call hook), but the explicit clear here closes
+    // the window where a concurrent reader could call buildContext() and
+    // hit a stale cache between the wipe and the re-derive.
+    this.kg.invalidateEntityIndexCache();
+
     // 2. Re-derive from each knowledge/*.md file's frontmatter.
     let totalTriples = 0;
     for (const filePath of collectMdFiles(targetDir)) {

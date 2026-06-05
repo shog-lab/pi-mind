@@ -510,4 +510,47 @@ Alice owns the auth service.`,
   });
 });
 
+describe("rebuildKGFromFiles \u2014 invalidates the KG entity index cache", () => {
+  it("after a wipe-to-empty rebuild, buildContext returns no stale KG block", async () => {
+    // Seed: write a knowledge file with a real triple.
+    const fp = writeKnowledge("a.md", "Alice owns the auth service.", {
+      type: "project",
+      triples: '[["alice", "owns", "auth-service"]]',
+    });
+    await mc.syncIndex();
+    expect(mc.kg.stats().triples).toBe(1);
+
+    // Warm the in-memory entity index. This is the critical step: the
+    // next operation is a wipe. If the index is NOT invalidated, the
+    // second buildContext below would re-use the stale "alice" /
+    // "auth-service" tokens and emit an empty <knowledge-graph> block
+    // (entity names are now gone, queryEntity returns no triples —
+    // but the OLD code path would still try to look up by name, fail
+    // silently on SQLite, and emit a block header with no rows).
+    const warm = await mc.buildContext("alice auth");
+    expect(warm).toContain("<knowledge-graph>");
+
+    // Wipe the source file and rebuild. rebuildKGFromFiles DELETEs
+    // kg_triples + kg_entities, then re-derives from the now-empty
+    // knowledge/ dir. The explicit invalidateEntityIndexCache() call
+    // inside rebuildKGFromFiles must drop the cached index before
+    // any concurrent reader can hit it.
+    fs.unlinkSync(fp);
+    await mc.syncIndex();
+    expect(mc.kg.stats().triples).toBe(0);
+    expect(mc.kg.stats().entities).toBe(0);
+
+    // Now query again. The KG context must NOT contain a stale
+    // <knowledge-graph> block (the central contract: rebuild wipes the
+    // entity index cache so post-wipe buildContext has no phantom
+    // matches). The L2 long-term-memory path is orthogonal and may
+    // still surface FTS5 hits from index.md etc — that's a separate
+    // concern.
+    const after = await mc.buildContext("alice auth");
+    expect(after).not.toContain("<knowledge-graph>");
+    expect(after).not.toContain("alice");
+    expect(after).not.toContain("auth-service");
+  });
+});
+
 

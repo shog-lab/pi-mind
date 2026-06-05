@@ -49,10 +49,89 @@ function entityId(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "_").replace(/'/g, "");
 }
 
+// --- KG-only stopwords for entity matching ---
+//
+// Deliberately a small, KG-only set — NOT imported from core.ts to avoid
+// coupling knowledge-graph (leaf) back to core. Used only inside
+// buildContext() to filter out common English particles and Chinese
+// function words from query tokens before the token-bounded entity lookup.
+// Does NOT affect the triple storage layer (addTriple, queryEntity, etc.).
+const KG_STOPWORDS = new Set([
+  // English common particles / function words
+  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+  "have", "has", "had", "do", "does", "did", "will", "would", "could",
+  "should", "may", "might", "shall", "can", "need", "dare",
+  "to", "of", "in", "for", "on", "with", "at", "by", "from", "as",
+  "into", "through", "during", "before", "after", "above", "below",
+  "and", "or", "not", "no", "so", "if", "but", "than", "too", "very",
+  "what", "when", "where", "why", "how", "who", "whom", "which",
+  "i", "you", "he", "she", "we", "they", "me", "him", "her", "us", "them",
+  "my", "your", "his", "our", "their", "its",
+  "this", "that", "these", "those", "it",
+  "go", "on",
+  // Chinese common function words / particles
+  "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一",
+  "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有",
+  "看", "好", "自己", "这", "他", "她", "它", "们",
+]);
+
+/**
+ * Tokenize a lowercased entity name for the KG entity index.
+ *
+ * Rules:
+ *  - ASCII alphanumerics + hyphen + underscore form tokens. Hyphen and
+ *    underscore are split as token boundaries: "auth-service" ->
+ *    ["auth", "service"], "oauth_token" -> ["oauth", "token"].
+ *  - Runs of non-ASCII characters (CJK, etc.) are kept as a single token.
+ *    "毛雄禹" -> ["毛雄禹"]. Cheap; word segmentation isn't worth it for
+ *    an in-process memory store, and a non-ASCII substring fallback in
+ *    buildContext catches the long-phrase Chinese case.
+ *  - Tokens shorter than 2 chars and KG_STOPWORDS are dropped.
+ */
+function tokenizeEntityName(nameLower: string): string[] {
+  const out: string[] = [];
+  // Match either an ASCII alphanumeric+hyphen+underscore run, or a
+  // non-ASCII run. The "i" flag is harmless here (no ASCII letters
+  // outside [a-z] after lowercase).
+  const re = /[a-z0-9_-]+|[^\x00-\x7f]+/g;
+  for (const m of nameLower.matchAll(re)) {
+    const t = m[0];
+    if (t.includes("-") || t.includes("_")) {
+      for (const part of t.split(/[-_]+/)) {
+        if (part.length >= 2 && !KG_STOPWORDS.has(part)) out.push(part);
+      }
+    } else if (t.length >= 2 && !KG_STOPWORDS.has(t)) {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** Tokenize a lowercased query string. Same rules as entity tokenization. */
+function tokenizeQuery(queryLower: string): string[] {
+  return tokenizeEntityName(queryLower);
+}
+
 // --- KnowledgeGraph class ---
 
 export class KnowledgeGraph {
   private db: InstanceType<typeof Database>;
+  /**
+   * Lazy in-memory token → entity-name index, used by buildContext() to
+   * avoid scanning all entity names + doing substring matching in JS on
+   * every agent turn. null = not yet built; the first buildContext() call
+   * triggers ensureEntityIndex(). Cleared on any addTriple() (newly
+   * inserted triples can introduce new entities) and via
+   * invalidateEntityIndexCache() from external bulk writers like
+   * MemoryCore.rebuildKGFromFiles() after wiping the tables.
+   */
+  private _entityTokenIndex: Map<string, Set<string>> | null = null;
+  /**
+   * Set of all entity names present in the index, kept in sync with
+   * _entityTokenIndex. Used by the non-ASCII substring fallback in
+   * buildContext (avoiding a second SELECT name FROM kg_entities).
+   */
+  private _entityNames: Set<string> = new Set();
 
   constructor(db: InstanceType<typeof Database>) {
     this.db = db;
@@ -179,6 +258,14 @@ export class KnowledgeGraph {
       opts?.confidence ?? 1.0,
       opts?.sourceFile ?? null,
     );
+    // Index may now contain new entity names; rebuild lazily on next
+    // buildContext. Cheaper than updating the index incrementally, and
+    // the cache hit rate is still high because the typical pattern is
+    // "many reads, few writes" (agent turns are reads, remember_this is
+    // a write). For batch paths like addTriplesBatch / rebuildKGFromFiles
+    // the caller should call invalidateEntityIndexCache() once instead
+    // of relying on this per-triple invalidation.
+    this.invalidateEntityIndexCache();
     return tripleId;
   }
 
@@ -370,26 +457,89 @@ export class KnowledgeGraph {
     return rows.map((r) => r.name);
   }
 
+  // --- Entity index for buildContext (lazy, invalidated on writes) ---
+
+  /**
+   * Public invalidation hook. Callers that bulk-modify kg_entities /
+   * kg_triples outside addTriple (notably MemoryCore.rebuildKGFromFiles
+   * after DELETEing the tables) MUST call this so the next buildContext
+   * doesn't serve a stale index. No-op if the index isn't built yet.
+   */
+  invalidateEntityIndexCache(): void {
+    this._entityTokenIndex = null;
+    this._entityNames = new Set();
+  }
+
+  private ensureEntityIndex(): void {
+    if (this._entityTokenIndex !== null) return;
+    this._entityTokenIndex = new Map();
+    this._entityNames = new Set();
+    const rows = this.db.prepare("SELECT name FROM kg_entities").all() as Array<{ name: string }>;
+    for (const r of rows) {
+      this._entityNames.add(r.name);
+      for (const tok of tokenizeEntityName(r.name.toLowerCase())) {
+        let set = this._entityTokenIndex.get(tok);
+        if (!set) { set = new Set(); this._entityTokenIndex.set(tok, set); }
+        set.add(r.name);
+      }
+    }
+  }
+
   /** Build KG context block for a query (matches entity names in query text) */
   buildContext(query: string): string {
+    this.ensureEntityIndex();
     const queryLower = query.toLowerCase();
-    const entityNames = this.getAllEntityNames();
-    const parts: string[] = [];
+    const queryTokens = tokenizeQuery(queryLower);
+    const matched = new Set<string>();
 
-    for (const name of entityNames) {
-      if (queryLower.includes(name.toLowerCase())) {
-        const triples = this.queryEntity(name);
-        if (triples.length > 0) {
-          const lines = [`\n### Knowledge Graph: ${name}`];
-          for (const t of triples) {
-            const time = t.valid_from
-              ? ` (since ${t.valid_from}${t.valid_to ? ` until ${t.valid_to}` : ""})`
-              : "";
-            const conf = t.confidence < 1.0 ? ` [${Math.round(t.confidence * 100)}%]` : "";
-            lines.push(`  - ${t.subject} → ${t.predicate} → ${t.object}${time}${conf}`);
+    // Step 1: token-bounded matching for ASCII / hyphenated / underscored
+    // entity names. For each query token:
+    //   - exact lookup (preserves the "auth" → entity-with-token-auth case)
+    //   - if query token is long enough (>=3), also do token-prefix lookup
+    //     (preserves "auth" → "auth-service"). NOT reverse-prefix: "go"
+    //     must not match "go-service" via the OTHER direction.
+    for (const qt of queryTokens) {
+      if (KG_STOPWORDS.has(qt)) continue;
+      const exact = this._entityTokenIndex!.get(qt);
+      if (exact) for (const e of exact) matched.add(e);
+      if (qt.length >= 3) {
+        for (const [idxTok, ents] of this._entityTokenIndex!) {
+          if (idxTok !== qt && idxTok.startsWith(qt)) {
+            for (const e of ents) matched.add(e);
           }
-          parts.push(lines.join("\n"));
         }
+      }
+    }
+
+    // Step 2: non-ASCII substring fallback for CJK (and other non-ASCII
+    // scripts) entity names. We don't have word segmentation for Chinese
+    // and full-string includes() over a short list of entity names is
+    // cheap. Whitelist is "entity has non-ASCII and length >= 2" — the
+    // same floor as the ASCII token length filter. This deliberately
+    // does NOT apply to ASCII entity names: an entity like "oauth_token"
+    // must not be substring-matched by the query token "auth" (covered
+    // by Step 1's token-bounded logic only).
+    for (const name of this._entityNames) {
+      if (name.length < 2) continue;
+      if (!/[^\x00-\x7f]/.test(name)) continue;
+      if (queryLower.includes(name.toLowerCase())) matched.add(name);
+    }
+
+    // Step 3: render. Same shape as before — one `### Knowledge Graph: <name>`
+    // block per matched entity, populated from queryEntity(name).
+    const parts: string[] = [];
+    for (const name of matched) {
+      const triples = this.queryEntity(name);
+      if (triples.length > 0) {
+        const lines = [`\n### Knowledge Graph: ${name}`];
+        for (const t of triples) {
+          const time = t.valid_from
+            ? ` (since ${t.valid_from}${t.valid_to ? ` until ${t.valid_to}` : ""})`
+            : "";
+          const conf = t.confidence < 1.0 ? ` [${Math.round(t.confidence * 100)}%]` : "";
+          lines.push(`  - ${t.subject} → ${t.predicate} → ${t.object}${time}${conf}`);
+        }
+        parts.push(lines.join("\n"));
       }
     }
 
