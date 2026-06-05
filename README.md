@@ -11,7 +11,7 @@ A monorepo of capability packages for [pi](https://github.com/earendil-works/pi)
 - **Persistent, inspectable memory.** Knowledge is just `.pi-mind/knowledge/*.md` files with frontmatter. `git diff` shows what your agent remembered. No opaque vector store you can't read.
 - **Hybrid retrieval.** FTS5 keyword search + vector similarity (Ollama `nomic-embed-text`) + a SQLite-backed knowledge graph (entities and triples), merged per turn. The agent only sees what's relevant to the current task.
 - **Passive by design.** No background curator, no autonomous LLM loops writing on your behalf. Every `remember_this` and `observe` is an explicit tool call in a visible turn. Memory-audit flags issues; humans fix them.
-- **Ask-first skill authoring.** Agent proposes new skills with `create_skill`; you approve before the file is written. Skills change future behavior, so the gate stays with the user.
+- **Ask-first skill authoring.** Agent proposes new skills with `create_skill`; you approve before the file is written. Skills change future behavior, so the agent proposes and you decide.
 - **No required daemon.** Pure Node + SQLite. Ollama is optional for vector search; FTS5 keyword search works without it. No cron jobs required (an optional cron snippet is documented for scheduled audit).
 
 ## 30-second demo
