@@ -90,7 +90,7 @@ See [AGENTS.md](AGENTS.md#design-principles) for the human-in-the-loop autonomy 
 
 ## History
 
-Older autonomous-loop (`pi-goals`) and browser-runtime (`packages/chrome`) packages were removed. Per-package CHANGELOGs and READMEs carry the migration details.
+Older autonomous-loop (`pi-goals`) and browser-runtime (`packages/chrome`) packages were removed. Package READMEs and git history carry the migration details.
 
 ## License
 
