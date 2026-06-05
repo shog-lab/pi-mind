@@ -1,6 +1,6 @@
 # @shog-lab/pi-mind-core
 
-**Give pi a mind: portable, self-maintaining memory as a drop-in [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent) extension.**
+**Give pi a mind: portable, self-maintaining memory as a drop-in [pi](https://github.com/earendil-works/pi) extension.**
 
 A pi extension package that turns any repo into the home of a persistent agent. Memory survives across sessions, accumulates over time, and the agent maintains its own knowledge through a periodic memory-audit.
 
@@ -35,7 +35,7 @@ npm i -D @shog-lab/pi-mind-core
 
 `postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/` directories. Idempotent — re-running `npm install` is safe.
 
-`pi-mind` declares `@earendil-works/pi-coding-agent` as a peer dependency. Make sure `pi` is on `PATH` (typically via `npm i -g @earendil-works/pi-coding-agent`).
+`pi-mind` declares `@earendil-works/pi-coding-agent` as a peer dependency. Make sure `pi` is on `PATH` (typically via `npm i -g @earendil-works/pi-coding-agent` — the [pi](https://github.com/earendil-works/pi) coding-agent runtime).
 
 ## Quickstart
 
@@ -253,7 +253,7 @@ Key implementation notes:
 
 ## Status
 
-Early. The core (memory model, schema, lint, memory-audit, forget) is in active use; APIs may evolve. Tests cover MemoryCore, KnowledgeGraph, forget mechanism, session-archive filter, and extension behavior (all passing — verify count with `npm test`).
+Stable core, active development. `@shog-lab/pi-mind-core@0.13.1` is published; this repo dogfoods it (run `pi` here to see the agent work on its own codebase). 296 tests pass across 18 test files (`npm test`). Memory model, schema, lint, memory-audit, and forget are stable APIs; smaller surfaces (tools, hooks) may evolve.
 
 Roadmap (no fixed dates):
 

@@ -1,75 +1,96 @@
-# pi-mind monorepo
+# pi-mind
 
-Agent capability packages for [pi-coding-agent](https://github.com/earendil-works/pi-coding-agent): persistent memory and ask-first skill authoring, with human-in-the-loop autonomy by design (see [AGENTS.md](AGENTS.md#design-principles) — behavior-changing actions propose before they act). All packages publish under the `@shog-lab` scope.
+**Give your coding agent a memory that survives across sessions — inspectable as plain markdown in your repo.**
 
-## Packages
+> v0.13.1 · 296 tests passing · dogfooded on this repo · MIT
 
-### [`@shog-lab/pi-mind-core`](packages/core/) — the core
-Persistent memory + ask-first skill authoring. Two layers on disk + one derived index: **raw/** (event stream), **knowledge/** (compiled facts as markdown — also the SoT for the KG via its `triples:` frontmatter field), and the **KG index** (SQLite `kg_*` tables in `.pi-mind/.pi-mind-index.db`, rebuilt from frontmatter on every sync; not a separate `graph/` directory). FTS5 + vector + KG retrieval. Memory is passive (no background curator); skills are written only after you approve a proposal. Memory-audit loop, subject classification, schema linting.
+A monorepo of capability packages for [pi](https://github.com/earendil-works/pi) (the coding-agent runtime). pi-mind turns any repo into a persistent, self-maintaining knowledge store: the agent writes memories as markdown files with YAML frontmatter, retrieves them by relevance, and never silently mutates state without your approval.
 
-### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
-Drop-in extensions the LLM calls at runtime: **web_search** (via mmx CLI — fill MiniMax's missing search capability), **mcp-bridge** (proxy any MCP server as pi tools). _0.3.0 removed `spawn_subagent` — see pi-subagent below; 0.4.0 removed `understand_image` now that models like MiniMax-M3 have native vision._
+## What you get
 
-### [`@shog-lab/pi-subagent`](packages/subagent/) — child-pi spawning primitive
-Single `spawn_subagent` tool: agent passes `cwd` + `prompt`, gets back a clean child pi's response. Extracted from pi-toolkit in toolkit 0.3.0 because it's infrastructure (process spawning), not a leaf tool. Useful for scoped sub-tasks that need a fresh agent context.
+- **Persistent, inspectable memory.** Knowledge is just `.pi-mind/knowledge/*.md` files with frontmatter. `git diff` shows what your agent remembered. No opaque vector store you can't read.
+- **Hybrid retrieval.** FTS5 keyword search + vector similarity (Ollama `nomic-embed-text`) + a SQLite-backed knowledge graph (entities and triples), merged per turn. The agent only sees what's relevant to the current task.
+- **Passive by design.** No background curator, no autonomous LLM loops writing on your behalf. Every `remember_this` and `observe` is an explicit tool call in a visible turn. Memory-audit flags issues; humans fix them.
+- **Ask-first skill authoring.** Agent proposes new skills with `create_skill`; you approve before the file is written. Skills change future behavior, so the gate stays with the user.
+- **One install, zero daemons.** Pure Node + SQLite. No cron jobs required (an optional cron snippet is documented for scheduled audit).
 
-### [`@shog-lab/pi-bus`](packages/bus/) — inter-pi messaging primitive
-Atomic peer-to-peer messaging for pi sessions: open multiple pi windows in the same repo, they auto-join a shared bus. 3 tools (`agent_list` / `agent_send` / `agent_inbox`). Incoming messages auto-trigger the recipient's agent via `pi.sendUserMessage` — even when it's idle waiting for user input. Per-repo scoped, fire-and-forget, no orchestration.
+## 30-second demo
 
-### [`@shog-lab/pi-utils`](packages/utils/) — internal infrastructure
-Shared by the above: `spawnPi()` (programmatic pi spawn with `--mode json` + token extraction) and `resolvePiMindDir()` (repo-rooted `.pi-mind` path that survives git worktree teardown). Not loaded as a pi extension.
+```text
+# Session 1
+$ cd ~/my-repo && pi
+pi> remember this: I prefer ripgrep over grep for code search
+pi> /exit
 
-_(Memory benchmark harness for LongMemEval lives at [`packages/core/eval/`](packages/core/eval/) — folded into pi-mind-core on 2026-05-27 since it's internal dev tooling that only ever measured memory.)_
+# Session 2 (any day, any machine, same repo)
+$ cd ~/my-repo && pi
+pi> what search tool do I prefer?
+→ "ripgrep — see .pi-mind/knowledge/<date>-…md"
+```
+
+The "memory" is the same `.md` file you can `cat`, `grep`, and commit. No magic, no cloud lock-in.
 
 ## Quickstart
 
 ```bash
+# 1. Install the pi runtime (one-time, global)
+npm i -g @earendil-works/pi-coding-agent
+
+# 2. Add memory + ask-first skills to your repo
 cd ~/my-repo
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit
-pi   # extensions + skills auto-loaded
+npm i -D @shog-lab/pi-mind-core
 ```
 
-Pick what you need:
+Verify the loop:
 
 ```bash
-npm i -D @shog-lab/pi-mind-core                                       # memory + ask-first skills only
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-toolkit                  # + web search, image, MCP bridge
-npm i -D @shog-lab/pi-mind-core @shog-lab/pi-bus @shog-lab/pi-subagent # + inter-pi messaging + child-pi spawning
+# Launch pi, ask it to remember something, exit
+pi
+> remember this: I prefer ripgrep over grep
+> /exit
+
+# Relaunch and ask it back — same answer, no re-prompting
+pi
+> what search tool do I prefer?
 ```
 
-> **Note:** `@shog-lab/pi-goals` (ralph) was deprecated and removed from this monorepo on 2026-05-28. The autonomous-loop pattern it implemented is out of scope for this ecosystem; compose `pi-bus` + `pi-subagent` + `git worktree` for human-in-the-loop alternatives. The package versions remain installable from npm if you depend on the old behavior — pin `@shog-lab/pi-goals@0.5.1`.
+## What's in this monorepo
 
-See each package's README for details.
+**Main package — install this for the headline features:**
+
+- [`@shog-lab/pi-mind-core`](packages/core/) — persistent memory (FTS5 + vector + KG) and ask-first skill authoring. The one most users want.
+
+**Optional add-ons (compose with core, install only what you need):**
+
+- [`@shog-lab/pi-toolkit`](packages/toolkit/) — drop-in LLM tools: web search and an MCP server bridge.
+- [`@shog-lab/pi-subagent`](packages/subagent/) — spawn focused child pi for scoped subtasks with a clean context.
+- [`@shog-lab/pi-bus`](packages/bus/) — inter-pi messaging: open multiple `pi` windows on the same repo, they auto-join a shared bus.
+
+**Internal (don't install directly):**
+
+- [`@shog-lab/pi-utils`](packages/utils/) — shared helpers (process spawn, git-aware path resolution) depended on by the other packages.
+
+Each package has its own README with install + usage details. All publish under the `@shog-lab` scope.
 
 ## Develop
 
 ```bash
 git clone https://github.com/shog-lab/pi-mind.git
 cd pi-mind
-npm install   # installs all workspaces + runs each postinstall → .pi/ symlinks
+npm install   # installs all workspaces + postinstall → .pi/ symlinks
 npm run build
-npm test      # Run all workspace vitest suites (count per workspace — verify with npm test)
+npm test
 ```
 
-Per-package:
+The monorepo dogfoods itself: running `pi` here loads memory + toolkit + bus + subagent on the codebase that built them.
 
-```bash
-npm run build -w @shog-lab/pi-mind-core      # build memory only
-npm test -w @shog-lab/pi-toolkit             # test toolkit only
-npm publish -w @shog-lab/pi-utils            # publish utils only
-```
+## Design
 
-## Dogfooding pi-mind in this repo
-
-The monorepo's own `.pi/extensions/` is symlinked into `packages/*/dist/` via each postinstall. Running `pi` here loads memory, toolkit, bus, subagent — letting the agent work on its own codebase.
-
-```bash
-npx tsc -w -p packages/core   # watch + rebuild memory; pi picks up dist/ changes on next invocation
-```
+See [AGENTS.md](AGENTS.md#design-principles) for the human-in-the-loop autonomy principles that govern this monorepo (memory is passive; behavior changes propose-before-they-act; the trigger chain for any state mutation must originate with a user message).
 
 ## History
 
-`packages/chrome` (a Chrome runtime built on `agent-browser` + RxJS) lived here briefly during a hedge into deeper browser automation. It was removed in favor of the simpler `pi-toolkit` approach: ship `agent-browser` CLI as a dependency and let the agent compose via Bash. The git history retains the work for reference.
+A short note on what the repo no longer carries: `@shog-lab/pi-goals` (an autonomous-loop package) and `packages/chrome` (a Chrome runtime built on `agent-browser` + RxJS) were both removed. pi-goals' pattern is out of scope for this ecosystem; compose `pi-bus` + `pi-subagent` + `git worktree` for human-in-the-loop alternatives. `pi-toolkit` 0.3.0 extracted `spawn_subagent` to its own package; 0.4.0 dropped `understand_image` once models gained native vision.
 
 ## License
 
