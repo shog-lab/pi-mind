@@ -313,6 +313,96 @@ describe('KnowledgeGraph', () => {
     });
   });
 
+  describe('healthReport', () => {
+    it('summary block matches stats()', () => {
+      kg.addTriple('alice', 'owns', 'book');
+      kg.addTriple('bob', 'role', 'engineer');
+      const h = kg.healthReport();
+      expect(h.summary).toEqual(kg.stats());
+    });
+
+    it('topPredicates is sorted by count desc and limited to topN', () => {
+      for (let i = 0; i < 3; i++) kg.addTriple(`s${i}`, 'uses', `t${i}`);
+      for (let i = 0; i < 5; i++) kg.addTriple(`p${i}`, 'owns', `q${i}`);
+      const h = kg.healthReport(2);
+      expect(h.topPredicates).toEqual([
+        { predicate: 'owns', count: 5 },
+        { predicate: 'uses', count: 3 },
+      ]);
+    });
+
+    it('topSourceFiles surfaces per-file triple counts and excludes NULL', () => {
+      kg.addTriple('a', 'r', 'b', { sourceFile: 'foo.md' });
+      kg.addTriple('c', 'r', 'd', { sourceFile: 'foo.md' });
+      kg.addTriple('e', 'r', 'f', { sourceFile: 'bar.md' });
+      kg.addTriple('g', 'r', 'h'); // no source_file
+      const h = kg.healthReport();
+      const foo = h.topSourceFiles.find((s) => s.source_file === 'foo.md');
+      const bar = h.topSourceFiles.find((s) => s.source_file === 'bar.md');
+      expect(foo?.triples).toBe(2);
+      expect(bar?.triples).toBe(1);
+      expect(h.topSourceFiles.find((s) => s.source_file === null)).toBeUndefined();
+    });
+
+    it('topEntities reports outgoing/incoming/degree correctly', () => {
+      kg.addTriple('alice', 'manages', 'team-x');
+      kg.addTriple('alice', 'owns', 'book');
+      kg.addTriple('bob', 'reports_to', 'alice');
+      const h = kg.healthReport();
+      const alice = h.topEntities.find((e) => e.name === 'alice');
+      expect(alice).toEqual({ name: 'alice', outgoing: 2, incoming: 1, degree: 3 });
+      const bob = h.topEntities.find((e) => e.name === 'bob');
+      expect(bob?.outgoing).toBe(1);
+      expect(bob?.incoming).toBe(0);
+    });
+
+    it('suspiciousPredicates flags short / noisy predicates (not legitimate ones)', () => {
+      kg.addTriple('a', 'is', 'b');          // too short (2 chars)
+      kg.addTriple('c', 'has', 'd');         // in noise set
+      kg.addTriple('e', 'related_to', 'f');  // in noise set
+      kg.addTriple('g', 'uses_model', 'h');  // legitimate
+      kg.addTriple('i', 'released_version', 'j');  // legitimate
+      const h = kg.healthReport();
+      const flagged = h.suspiciousPredicates.map((s) => s.predicate).sort();
+      expect(flagged).toEqual(['has', 'is', 'related_to']);
+      // Each entry has a human-readable reason.
+      for (const s of h.suspiciousPredicates) {
+        expect(s.reason).toMatch(/too short|noise set/);
+        expect(s.count).toBe(1);
+      }
+    });
+
+    it('orphans.triplesPointingToMissingEntity is 0 on a healthy DB', () => {
+      kg.addTriple('alice', 'owns', 'book');
+      kg.addTriple('book', 'kind', 'novel');
+      const h = kg.healthReport();
+      expect(h.orphans.triplesPointingToMissingEntity).toBe(0);
+    });
+
+    it('expired triples do NOT appear in topPredicates / topEntities / suspiciousPredicates', () => {
+      // Snapshot of "current" should ignore invalidated triples.
+      kg.addTriple('a', 'is', 'b');          // noise
+      kg.addTriple('c', 'd', 'e');           // legitimate
+      const before = kg.healthReport();
+      expect(before.topPredicates.map((p) => p.predicate)).toContain('is');
+      kg.invalidate('a', 'is', 'b');
+      const after = kg.healthReport();
+      expect(after.topPredicates.map((p) => p.predicate)).not.toContain('is');
+      // Entity "a" still exists in kg_entities (FK-vacuum happens in
+      // rebuildKGFromFiles, not in invalidate). It IS still listed in
+      // topEntities but with degree 0 (no current outgoing or incoming
+      // triples). The point of this test is that the report counts
+      // current facts only — "is" disappears from top predicates, "a"'s
+      // degree is zero, and expiredFacts reflects the invalidation.
+      const aEntity = after.topEntities.find((e) => e.name === 'a');
+      expect(aEntity).toBeDefined();
+      expect(aEntity!.outgoing).toBe(0);
+      expect(aEntity!.incoming).toBe(0);
+      expect(aEntity!.degree).toBe(0);
+      expect(after.summary.expiredFacts).toBe(1);
+    });
+  });
+
   describe('getEntity', () => {
     it('returns entity info after triple is added', () => {
       kg.addTriple('Alice', 'knows', 'Bob');

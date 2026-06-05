@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import Database from "better-sqlite3";
 import { VALID_SUBJECTS, VALID_TIERS, LEGACY_L1_TYPES, LEGACY_TYPE_MAP, normalizeSubject, validateTriples } from "../lib/schema.js";
 import { forgetOldMemories, resetForgetCounter, type ForgetResult } from "../lib/forget.js";
 import { MemoryCore, withGroupLock } from "../extensions/memory/core.js";
@@ -487,6 +488,92 @@ async function runRebuildKgApply(piMindDir: string): Promise<void> {
   });
 }
 
+// --- KG health report (--kg-health, read-only) ---
+
+/**
+ * Print a read-only KG health snapshot for the agent / memory-audit
+ * skill to consume. Opens the index DB read-only and queries stats +
+ * top predicates + top source files + top entities + suspicious
+ * predicates + orphan check. Never writes; never modifies state.
+ */
+function runKgHealth(piMindDir: string): void {
+  console.log(`pi-mind-lint --kg-health  PI_MIND_DIR=${piMindDir}`);
+  const dbPath = path.join(piMindDir, ".pi-mind-index.db");
+  if (!fs.existsSync(dbPath)) {
+    console.log(`Index DB not found: ${dbPath}`);
+    console.log("Tip: run `npx pi-mind-lint --rebuild-kg --apply` first to create it.");
+    return;
+  }
+  // MemoryCore opens the index DB for us. We never write to it
+  // (healthReport() is read-only) so the connection is purely a reader.
+  const mc = new MemoryCore({ groupDir: piMindDir, dbPath });
+  try {
+    const r = mc.kg.healthReport();
+    console.log("");
+    console.log("Summary:");
+    console.log(`  entities:    ${r.summary.entities}`);
+    console.log(`  triples:     ${r.summary.triples}`);
+    console.log(`  current:     ${r.summary.currentFacts}`);
+    console.log(`  expired:     ${r.summary.expiredFacts}`);
+
+    console.log("");
+    console.log("Top predicates (current facts):");
+    if (r.topPredicates.length === 0) {
+      console.log("  (none)");
+    } else {
+      for (const p of r.topPredicates) {
+        console.log(`  ${p.predicate.padEnd(28)} ${p.count}`);
+      }
+    }
+
+    console.log("");
+    console.log("Top source files:");
+    if (r.topSourceFiles.length === 0) {
+      console.log("  (none)");
+    } else {
+      for (const s of r.topSourceFiles) {
+        // Trim long absolute paths to the basename + parent for readability.
+        const label = s.source_file.length > 60
+          ? "…" + s.source_file.slice(-59)
+          : s.source_file;
+        console.log(`  ${String(s.triples).padStart(4)}  ${label}`);
+      }
+    }
+
+    console.log("");
+    console.log("Top entities (by current-fact degree):");
+    if (r.topEntities.length === 0) {
+      console.log("  (none)");
+    } else {
+      for (const e of r.topEntities) {
+        console.log(`  ${e.name.padEnd(28)} out=${e.outgoing} in=${e.incoming} deg=${e.degree}`);
+      }
+    }
+
+    console.log("");
+    console.log("Suspicious predicates (low-signal / ambiguous):");
+    if (r.suspiciousPredicates.length === 0) {
+      console.log("  (none — good)");
+    } else {
+      for (const s of r.suspiciousPredicates) {
+        console.log(`  ${s.predicate.padEnd(28)} ${s.count}  [${s.reason}]`);
+      }
+      console.log("");
+      console.log("  Tip: see the predicate/entity naming convention in AGENTS.md");
+      console.log("  to consolidate these (e.g. `owns` vs `owner_of`).");
+    }
+
+    console.log("");
+    console.log("Orphan check:");
+    console.log(`  triples pointing to missing entity: ${r.orphans.triplesPointingToMissingEntity}`);
+    if (r.orphans.triplesPointingToMissingEntity > 0) {
+      console.log("  ⚠️  This should be 0 (FK constraints). Run --rebuild-kg --apply to repair.");
+    }
+  } finally {
+    mc.close();
+  }
+}
+
 // --- CLI ---
 
 const args = process.argv.slice(2);
@@ -494,6 +581,7 @@ const FIX_MODE = args.includes("--fix");
 const DRY_RUN = args.includes("--dry-run");
 const PRUNE_MODE = args.includes("--prune");
 const REBUILD_KG = args.includes("--rebuild-kg");
+const KG_HEALTH = args.includes("--kg-health");
 const APPLY = args.includes("--apply");
 
 if (args.includes("--help") || args.includes("-h")) {
@@ -505,6 +593,7 @@ if (args.includes("--help") || args.includes("-h")) {
   console.error("  npx pi-mind-lint --prune --apply          # really delete stale memories + raw files");
   console.error("  npx pi-mind-lint --rebuild-kg             # preview KG rebuild (dry-run, no DB)");
   console.error("  npx pi-mind-lint --rebuild-kg --apply     # wipe + re-derive kg_* from knowledge/*.md");
+  console.error("  npx pi-mind-lint --kg-health              # read-only KG health report (entities/triples/top-predicate/etc.)");
   console.error("  npx pi-mind-lint --dir <abs-path>         # validate a custom dir");
   process.exit(0);
 }
@@ -524,6 +613,14 @@ if (REBUILD_KG) {
   } else {
     runRebuildKgDryRun(piMindDir);
   }
+  process.exit(0);
+}
+
+// --kg-health is a self-contained READ-ONLY mode: short-circuits the
+// rest of the CLI. Always safe — no writes, no apply path. Backed by
+// KnowledgeGraph.healthReport() and surfaced via the memory-audit skill.
+if (KG_HEALTH) {
+  runKgHealth(piMindDir);
   process.exit(0);
 }
 

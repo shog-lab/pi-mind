@@ -177,6 +177,24 @@ triples: [["alice", "owns", "auth-service"]]
 Content here.
 ```
 
+### KG naming convention (predicate / entity)
+
+Curated `triples:` in `knowledge/*.md` is the SoT for the SQLite KG index. Fragmented predicates (`owns` in one file, `owner_of` in another) silently split one relation into two KG edges and the agent never sees the join. Stick to the following:
+
+- **Entity**: canonical lowercase where the concept is a stable identifier; preserve natural casing only for proper nouns that lose identity when lowercased (`DeepSeek V4`, `MiniMax M3`, `--rebuild-kg`). Spaces collapse to single tokens; multi-word entities should be hyphen- or underscore-separated (`auth-service`, `ml-model`).
+- **Predicate**: snake_case verb phrase. `addTriple` lowercases and replaces spaces with `_` on ingest, so `uses model` and `uses_model` end up the same predicate — write it snake_case anyway for readability. No nested JSON, no English articles (`is`, `has`).
+- **Direction**: pick one. If the relation is asymmetric (X owns Y), write it that direction. If symmetric (X knows Y), write either direction but stay consistent across the corpus. Never mix `owns` / `owner_of` / `owned_by` — pick one.
+- **Examples** (good):
+  - `carol uses_model DeepSeek V4`
+  - `pi-mind-core released_version 0.12.0`
+  - `pi-mind-lint supports_flag --rebuild-kg`
+- **Examples** (bad — would get surfaced by `pi-mind-lint --kg-health`):
+  - `x is y`  — `is` is too short to carry signal
+  - `a has b` — `has` is in the noise set
+  - `p related_to q` — ambiguous direction; rewrite as `p depends_on q` or `p knows q`
+
+Run `npx pi-mind-lint --kg-health` (read-only) to see the current state: top predicates, top source files, top entities by degree, and the suspicious-predicate list. The `memory-audit` skill runs this on every audit.
+
 ## Key Files
 
 | Path | Purpose |

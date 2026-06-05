@@ -13,11 +13,12 @@ Periodic health check over `$PI_MIND_DIR/`. Not scheduled by the system — trig
 
 1. Run knowledge-lint over `knowledge/` and report errors / warnings / duplicates
 2. Sample recent memory writes from the maintenance log
-3. Archive compaction files older than 14 days
-4. Report results as a single concise summary
-5. Mark audit complete (silences the overdue notice for 24h)
+3. Run a read-only KG health report (`pi-mind-lint --kg-health`) and surface any suspicious predicates, orphan triples, or relation fragmentation
+4. Archive compaction files older than 14 days
+5. Report results as a single concise summary
+6. Mark audit complete (silences the overdue notice for 24h)
 
-**The agent does not auto-apply destructive operations.** Anything that mutates state (`lint --fix`, prune, archive) requires explicit user approval — show the preview, ask, only then apply.
+**The agent does not auto-apply destructive operations.** Anything that mutates state (`lint --fix`, prune, archive) requires explicit user approval — show the preview, ask, only then apply. The KG health step is purely read-only and does not need approval.
 
 ## Steps
 
@@ -67,7 +68,19 @@ grep "compaction-saved" "$LOG" 2>/dev/null | head -3
 
 Eyeball the sample: are the saved entries useful and self-contained? Anything obviously low-signal should be surfaced to the user for manual prune (don't auto-delete).
 
-### 4. Archive old compactions
+### 4. KG health report (read-only)
+
+```bash
+npx pi-mind-lint --kg-health
+```
+
+The report shows entity / triple / current / expired counts, the top predicates, top source files, top entities by degree, a list of **suspicious predicates** (too short like `is`, or in the noise set like `has` / `related_to`), and an orphan check. See the predicate / entity naming convention in `AGENTS.md` (KG naming convention section) for what "good" looks like and the examples of bad patterns to consolidate.
+
+If the report shows a non-zero orphan count, recommend the user run `npx pi-mind-lint --rebuild-kg --apply` to repair.
+
+**This step never writes.** It is purely diagnostic.
+
+### 5. Archive old compactions
 
 Move compaction files older than 14 days to `raw/compaction/archived/`. This is mechanical movement, no LLM judgment — safe to run without per-file approval, but mention the count in the report:
 
@@ -78,7 +91,7 @@ mkdir -p "$ARCHIVE_DIR"
 find "$COMPACTION_DIR" -maxdepth 1 -type f -name '*.md' -mtime +14 -exec mv {} "$ARCHIVE_DIR/" \;
 ```
 
-### 5. Report
+### 6. Report
 
 Output a single message in this shape:
 
@@ -89,6 +102,12 @@ Output a single message in this shape:
 - Errors: N (M auto-fixed after your approval, K remaining)
 - Warnings: N
 - Duplicates: N
+
+### KG health
+- Entities: N, Triples: N (current N, expired N)
+- Top predicate: <name> × N
+- Suspicious predicates: <list, or "none">
+- Orphans: N
 
 ### Memory writes today (sample)
 - <hash or excerpt> → <remember-this / observe / compaction>
@@ -104,7 +123,7 @@ Output a single message in this shape:
 
 If everything is clean, the report should still be sent — its absence shouldn't be the only signal of health. Brevity is fine when there are no issues.
 
-### 6. Write audit log
+### 7. Write audit log
 
 Save the report as a knowledge entry so audit history is queryable:
 
@@ -121,7 +140,7 @@ tags: [memory-audit, audit-log]
 <paste the report body>
 ```
 
-### 7. Mark complete
+### 8. Mark complete
 
 After writing the audit log, call:
 

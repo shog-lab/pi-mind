@@ -107,6 +107,22 @@ When a memory involves people, schedules, or relationships, add triples. The KG 
 triples: [["alice", "owns", "auth-service"], ["alice", "role", "backend-lead"]]
 ```
 
+**Naming convention** (the KG index is only as good as the predicate vocabulary — fragmented relations never get joined):
+
+- **Entity**: canonical lowercase for stable identifiers; preserve natural casing for proper nouns (`DeepSeek V4`, `--rebuild-kg`). Multi-word entities use hyphens / underscores (`auth-service`, `ml-model`).
+- **Predicate**: snake_case verb phrase. `addTriple` normalizes spaces to `_` on ingest, so `uses model` and `uses_model` end up the same — write it snake_case anyway. No copula (`is`, `has`), no `related_to` (pick a direction).
+- **Direction**: pick one. Never mix `owns` / `owner_of` / `owned_by` — that's relation fragmentation.
+
+Good: `carol uses_model DeepSeek V4` · `pi-mind-core released_version 0.12.0` · `pi-mind-lint supports_flag --rebuild-kg`. Bad: `x is y` · `a has b` · `p related_to q`.
+
+Audit the current state at any time:
+
+```bash
+npx pi-mind-lint --kg-health     # read-only: top predicates, suspicious list, orphan check
+```
+
+The `memory-audit` skill runs this on every audit. See `AGENTS.md` (KG naming convention) for the full rationale and the audit policy.
+
 ## Retrieval
 
 Each turn, the memory extension automatically injects relevant memory into the agent's context, before any tool call:

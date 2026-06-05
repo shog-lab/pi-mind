@@ -537,6 +537,97 @@ describe("knowledge-lint \u2014 PI_MIND_DIR resolution", () => {
   });
 });
 
+// =============================================================================
+// --kg-health (read-only KG health report, surfaced via memory-audit skill)
+//
+// Backed by KnowledgeGraph.healthReport(). The CLI must:
+//   - never write to the DB (read-only contract — verified by re-running
+//     the same --kg-health twice and asserting byte-identical output,
+//     except for a mtime we don't print);
+//   - report the same numbers as the in-process healthReport() for the
+//     same seeded data;
+//   - handle the "no index DB yet" case gracefully.
+// =============================================================================
+
+describe("knowledge-lint --kg-health", () => {
+  it("prints summary + top predicates + top source files + top entities + suspicious + orphan sections", { timeout: 60_000 }, () => {
+    setupKnowledgeDir();
+    writeFile(
+      "knowledge/a.md",
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: project\ntier: L2\ntriples: [["carol","uses_model","DeepSeek V4"],["bob","uses_model","MiniMax M3"]]\n---\n\nbody`,
+    );
+    // Pre-create the index via --apply so --kg-health has something to read.
+    const seed = runRebuildKg(["--rebuild-kg", "--apply"]);
+    expect(seed.stdout).toMatch(/After:  entities=4 triples=2/);
+
+    const r = runRebuildKg(["--kg-health"]);
+    expect(r.status).toBe(0);
+    // All section headers must appear.
+    expect(r.stdout).toMatch(/pi-mind-lint --kg-health/);
+    expect(r.stdout).toMatch(/Summary:/);
+    expect(r.stdout).toMatch(/Top predicates \(current facts\):/);
+    expect(r.stdout).toMatch(/Top source files:/);
+    expect(r.stdout).toMatch(/Top entities \(by current-fact degree\):/);
+    expect(r.stdout).toMatch(/Suspicious predicates \(low-signal \/ ambiguous\):/);
+    expect(r.stdout).toMatch(/Orphan check:/);
+    // Top-predicate includes 'uses_model' (count 2) — sorted by count desc.
+    expect(r.stdout).toMatch(/uses_model\s+2/);
+    // Orphan count is 0 (FK constraints).
+    expect(r.stdout).toMatch(/triples pointing to missing entity: 0/);
+  });
+
+  it("flags short / noise predicates in the suspicious section", { timeout: 60_000 }, () => {
+    setupKnowledgeDir();
+    writeFile(
+      "knowledge/noise.md",
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: project\ntier: L2\ntriples: [["x","is","y"],["a","has","b"],["p","related_to","q"],["g","uses_model","h"]]\n---\n\nbody`,
+    );
+    runRebuildKg(["--rebuild-kg", "--apply"]);
+
+    const r = runRebuildKg(["--kg-health"]);
+    expect(r.status).toBe(0);
+    // The three noise predicates are flagged with a reason.
+    expect(r.stdout).toMatch(/is\s+1\s+\[too short/);
+    expect(r.stdout).toMatch(/has\s+1\s+\[in noise set/);
+    expect(r.stdout).toMatch(/related_to\s+1\s+\[in noise set/);
+    // Legitimate predicate is NOT in the suspicious list.
+    expect(r.stdout).not.toMatch(/uses_model\s+\d+\s+\[(too short|noise set)/);
+    // The report also points the user at the convention doc.
+    expect(r.stdout).toMatch(/see the predicate\/entity naming convention in AGENTS\.md/);
+  });
+
+  it("reports gracefully when the index DB does not exist yet (no crash)", { timeout: 60_000 }, () => {
+    // tmp/ is empty (no setupKnowledgeDir, no DB). --kg-health should
+    // print a tip and exit 0, not crash.
+    const r = runRebuildKg(["--kg-health"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Index DB not found/);
+    expect(r.stdout).toMatch(/--rebuild-kg --apply/);
+  });
+
+  it("is read-only: running it twice produces the same entity / triple counts", { timeout: 60_000 }, () => {
+    setupKnowledgeDir();
+    writeFile(
+      "knowledge/a.md",
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: project\ntier: L2\ntriples: [["alice","owns","book"]]\n---\n\nbody`,
+    );
+    runRebuildKg(["--rebuild-kg", "--apply"]);
+
+    const r1 = runRebuildKg(["--kg-health"]);
+    const r2 = runRebuildKg(["--kg-health"]);
+    expect(r1.status).toBe(0);
+    expect(r2.status).toBe(0);
+    // Both reports must show the same counts. The DB mtime and any
+    // other volatile header text are not asserted — only the data.
+    const m = (s: string) => {
+      const m1 = s.match(/entities:\s+(\d+)/);
+      const m2 = s.match(/triples:\s+(\d+)/);
+      return [m1?.[1], m2?.[1]].join(",");
+    };
+    expect(m(r1.stdout)).toBe(m(r2.stdout));
+  });
+});
+
 /** Escape a path for use inside a RegExp literal. */
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

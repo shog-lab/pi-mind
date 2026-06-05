@@ -559,4 +559,122 @@ export class KnowledgeGraph {
     const current = (this.db.prepare("SELECT COUNT(*) as c FROM kg_triples WHERE valid_to IS NULL").get() as any).c;
     return { entities, triples, currentFacts: current, expiredFacts: triples - current };
   }
+
+  // --- Read-only health report (memory-audit integration) ---
+
+  /**
+   * Predicates that are too generic / ambiguous to carry real signal.
+   * Used by healthReport() to surface relation fragmentation: an agent
+   * that writes `owns` in one place and `owner_of` in another will see
+   * two top-predicates that should be one. The set is intentionally
+   * small and obvious — adding entries should require a real observed
+   * noise pattern, not a hunch.
+   */
+  private static readonly SUSPICIOUS_PREDICATES = new Set([
+    // too short / copula / light verb
+    "is", "has", "have", "had", "do", "does", "did",
+    // ambiguous direction or relation
+    "related_to", "related", "kind", "tag", "type", "category",
+    // too generic
+    "use", "uses", "used", "thing", "stuff", "misc", "other", "with",
+    // placeholders / separators (after snake_case normalization)
+    "_", "-",
+  ]);
+
+  /**
+   * Build a read-only health snapshot of the KG. Used by
+   * `pi-mind-lint --kg-health` and surfaced via the `memory-audit` skill.
+   * No writes. Safe to call from any context, including concurrent with
+   * a syncIndex — the worst case is reading a mid-rebuild count, which
+   * is still self-consistent within the call.
+   */
+  healthReport(topN: number = 10): {
+    summary: { entities: number; triples: number; currentFacts: number; expiredFacts: number };
+    topPredicates: Array<{ predicate: string; count: number }>;
+    topSourceFiles: Array<{ source_file: string; triples: number }>;
+    topEntities: Array<{ name: string; outgoing: number; incoming: number; degree: number }>;
+    suspiciousPredicates: Array<{ predicate: string; count: number; reason: string }>;
+    orphans: { triplesPointingToMissingEntity: number };
+  } {
+    const summary = this.stats();
+
+    // Top predicates by current-fact count.
+    const topPredicates = (this.db.prepare(
+      `SELECT predicate, COUNT(*) as c FROM kg_triples
+       WHERE valid_to IS NULL
+       GROUP BY predicate
+       ORDER BY c DESC, predicate ASC
+       LIMIT ?`,
+    ).all(topN) as Array<{ predicate: string; c: number }>).map((r) => ({
+      predicate: r.predicate,
+      count: r.c,
+    }));
+
+    // Top source files by triple count.
+    const topSourceFiles = (this.db.prepare(
+      `SELECT source_file, COUNT(*) as c FROM kg_triples
+       WHERE source_file IS NOT NULL
+       GROUP BY source_file
+       ORDER BY c DESC, source_file ASC
+       LIMIT ?`,
+    ).all(topN) as Array<{ source_file: string; c: number }>).map((r) => ({
+      source_file: r.source_file,
+      triples: r.c,
+    }));
+
+    // Top entities by current-fact degree.
+    const topEntities = (this.db.prepare(
+      `SELECT e.name,
+              (SELECT COUNT(*) FROM kg_triples t WHERE t.subject = e.id AND t.valid_to IS NULL) AS out_count,
+              (SELECT COUNT(*) FROM kg_triples t WHERE t.object  = e.id AND t.valid_to IS NULL) AS in_count
+       FROM kg_entities e
+       ORDER BY (out_count + in_count) DESC, e.name ASC
+       LIMIT ?`,
+    ).all(topN) as Array<{ name: string; out_count: number; in_count: number }>).map((r) => ({
+      name: r.name,
+      outgoing: r.out_count,
+      incoming: r.in_count,
+      degree: r.out_count + r.in_count,
+    }));
+
+    // Suspicious predicates: too short or in the noise set. Surface ALL
+    // occurrences (not topN) so the agent can see whether a single bad
+    // predicate is in heavy use vs scattered.
+    const allPredCounts = this.db.prepare(
+      `SELECT predicate, COUNT(*) as c FROM kg_triples
+       WHERE valid_to IS NULL
+       GROUP BY predicate
+       ORDER BY c DESC`,
+    ).all() as Array<{ predicate: string; c: number }>;
+    const suspiciousPredicates: Array<{ predicate: string; count: number; reason: string }> = [];
+    for (const r of allPredCounts) {
+      const reason =
+        r.predicate.length < 3
+          ? `too short (${r.predicate.length} chars)`
+          : KnowledgeGraph.SUSPICIOUS_PREDICATES.has(r.predicate)
+          ? "in noise set (too generic / ambiguous direction)"
+          : null;
+      if (reason) suspiciousPredicates.push({ predicate: r.predicate, count: r.c, reason });
+    }
+
+    // Orphan check: any triple whose subject or object is not in
+    // kg_entities. Should be 0 because the schema has FOREIGN KEY
+    // constraints, but a manual SQL poke or a future migration could
+    // break that. Reporting it keeps the audit honest.
+    const orphans = (this.db.prepare(
+      `SELECT COUNT(*) as c FROM kg_triples t
+       LEFT JOIN kg_entities s ON t.subject = s.id
+       LEFT JOIN kg_entities o ON t.object  = o.id
+       WHERE s.id IS NULL OR o.id IS NULL`,
+    ).get() as { c: number });
+
+    return {
+      summary,
+      topPredicates,
+      topSourceFiles,
+      topEntities,
+      suspiciousPredicates,
+      orphans: { triplesPointingToMissingEntity: orphans.c },
+    };
+  }
 }
