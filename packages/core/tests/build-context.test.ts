@@ -160,4 +160,61 @@ describe('buildContext — auto-generated knowledge/index.md is not in retrieval
     expect(ctx2).not.toMatch(/Wiki Index/);
     expect(ctx2).not.toMatch(/Auto-generated\./);
   });
+
+  it('skip is path-precise: a hand-written raw/notes/index.md is still indexed (not over-skipped)', async () => {
+    // Regression guard for the previous basename-based skip, which
+    // would have wrongly dropped ANY `index.md` under any scan dir
+    // (raw/ is also scanned by syncIndex, and user files can live
+    // under nested knowledge subdirs). The fix is path-precise:
+    // only the auto-generated <knowledgeDir>/index.md is skipped.
+    // Verify a hand-written raw/notes/index.md is fully indexed and
+    // retrievable.
+    const rawIndex = path.join(tmpDir, 'raw', 'notes', 'index.md');
+    fs.mkdirSync(path.dirname(rawIndex), { recursive: true });
+    fs.writeFileSync(
+      rawIndex,
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [raw-index]\n---\n\nA hand-written raw notes index with a distinctive token quokkamark-raw.\n`,
+    );
+    await mc.syncIndex();
+    const db = new Database(path.join(tmpDir, '.pi-mind-index.db'), { readonly: true });
+    // The hand-written raw/notes/index.md MUST be in FTS5 — not
+    // skipped by the index.md filter (which only matches the
+    // auto-generated knowledge/index.md).
+    const row = db.prepare("SELECT file_path, tier, tags FROM memory_fts WHERE file_path = ?").get(rawIndex) as
+      | { file_path: string; tier: string; tags: string }
+      | undefined;
+    db.close();
+    expect(row).toBeDefined();
+    expect(row!.tier).toBe('L2');
+    expect(row!.tags).toContain('raw-index');
+
+    // And retrievable via FTS5.
+    const ctx = await mc.buildContext('quokkamark-raw');
+    expect(ctx).toContain('quokkamark-raw');
+  });
+
+  it('skip is path-precise: a hand-written knowledge/sub/index.md is still indexed (not over-skipped)', async () => {
+    // Second leg of the same regression: nested knowledge dirs are
+    // also part of the curated set. A user who writes
+    // knowledge/projects/index.md as a topical landing page must
+    // not have it silently dropped from retrieval.
+    const nestedIndex = path.join(tmpDir, 'knowledge', 'projects', 'index.md');
+    fs.mkdirSync(path.dirname(nestedIndex), { recursive: true });
+    fs.writeFileSync(
+      nestedIndex,
+      `---\ndate: 2026-05-01T00:00:00Z\ntype: reference\ntier: L2\ntags: [project-landing]\n---\n\nA hand-written nested knowledge index with token quokkamark-nested.\n`,
+    );
+    await mc.syncIndex();
+    const db = new Database(path.join(tmpDir, '.pi-mind-index.db'), { readonly: true });
+    const row = db.prepare("SELECT file_path, tier, tags FROM memory_fts WHERE file_path = ?").get(nestedIndex) as
+      | { file_path: string; tier: string; tags: string }
+      | undefined;
+    db.close();
+    expect(row).toBeDefined();
+    expect(row!.tier).toBe('L2');
+    expect(row!.tags).toContain('project-landing');
+
+    const ctx = await mc.buildContext('quokkamark-nested');
+    expect(ctx).toContain('quokkamark-nested');
+  });
 });
