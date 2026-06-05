@@ -133,9 +133,14 @@ export class KnowledgeGraph {
    */
   private _entityNames: Set<string> = new Set();
 
-  constructor(db: InstanceType<typeof Database>) {
+  constructor(db: InstanceType<typeof Database>, opts?: { initSchema?: boolean }) {
     this.db = db;
-    this.initSchema();
+    // Default to true for the normal write/read path used by
+    // MemoryCore. Read-only callers (pi-mind-lint --kg-health) pass
+    // { initSchema: false } to skip CREATE TABLE / PRAGMA /
+    // migration — the schema is already on disk for any DB they
+    // would open, and any write would violate read-only.
+    if (opts?.initSchema !== false) this.initSchema();
   }
 
   private initSchema(): void {

@@ -21,6 +21,7 @@ import Database from "better-sqlite3";
 import { VALID_SUBJECTS, VALID_TIERS, LEGACY_L1_TYPES, LEGACY_TYPE_MAP, normalizeSubject, validateTriples } from "../lib/schema.js";
 import { forgetOldMemories, resetForgetCounter, type ForgetResult } from "../lib/forget.js";
 import { MemoryCore, withGroupLock } from "../extensions/memory/core.js";
+import { KnowledgeGraph } from "../extensions/memory/knowledge-graph.js";
 import { resolvePiMindDir } from "@shog-lab/pi-utils";
 
 // --- Frontmatter parser ---
@@ -504,11 +505,29 @@ function runKgHealth(piMindDir: string): void {
     console.log("Tip: run `npx pi-mind-lint --rebuild-kg --apply` first to create it.");
     return;
   }
-  // MemoryCore opens the index DB for us. We never write to it
-  // (healthReport() is read-only) so the connection is purely a reader.
-  const mc = new MemoryCore({ groupDir: piMindDir, dbPath });
+  // True read-only path: open the SQLite file with { readonly: true,
+  // fileMustExist: true } so the OS will reject any attempt to write,
+  // and construct KnowledgeGraph with { initSchema: false } so the
+  // class doesn't run CREATE TABLE / PRAGMA / migration. We do NOT
+  // instantiate MemoryCore here: its constructor mkdirSync's the
+  // knowledge/ + raw/ subdirs and opens the DB in read-write mode,
+  // which would silently violate the read-only contract even if
+  // healthReport() itself only does SELECTs.
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    const r = mc.kg.healthReport();
+    // Graceful: if the DB exists but has no kg_* tables (e.g. a
+    // different pi-mind component wrote the file, or it was wiped
+    // partially), don't crash. Print a tip and exit 0.
+    const tables = (db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('kg_entities','kg_triples')"
+    ).all() as Array<{ name: string }>).map((r) => r.name);
+    if (tables.length < 2) {
+      console.log(`KG tables not found in ${dbPath} (found: ${tables.join(", ") || "(none)"}).`);
+      console.log("Tip: run `npx pi-mind-lint --rebuild-kg --apply` to create them.");
+      return;
+    }
+    const kg = new KnowledgeGraph(db, { initSchema: false });
+    const r = kg.healthReport();
     console.log("");
     console.log("Summary:");
     console.log(`  entities:    ${r.summary.entities}`);
@@ -570,7 +589,7 @@ function runKgHealth(piMindDir: string): void {
       console.log("  ⚠️  This should be 0 (FK constraints). Run --rebuild-kg --apply to repair.");
     }
   } finally {
-    mc.close();
+    db.close();
   }
 }
 

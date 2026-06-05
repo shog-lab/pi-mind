@@ -21,6 +21,11 @@ const LINT_SCRIPT = path.resolve(
   "../scripts/knowledge-lint.ts",
 );
 
+// Dynamic import (avoid embedding implementation paths in static imports)
+const { KnowledgeGraph } = (await import(
+  "../extensions/memory/knowledge-graph.js"
+)) as typeof import("../extensions/memory/knowledge-graph.js");
+
 let tmpDir: string;
 
 beforeEach(() => {
@@ -625,6 +630,53 @@ describe("knowledge-lint --kg-health", () => {
       return [m1?.[1], m2?.[1]].join(",");
     };
     expect(m(r1.stdout)).toBe(m(r2.stdout));
+  });
+
+  it("does NOT create knowledge/ or raw/ subdirs on a read-only path", { timeout: 60_000 }, () => {
+    // The original implementation constructed MemoryCore() inside
+    // runKgHealth(), which mkdirSync's both subdirs on construction.
+    // The new read-only path must not touch the filesystem beyond
+    // reading the existing DB. We run --kg-health in a tmpDir with
+    // no knowledge/ or raw/ subdirs and a pre-seeded DB, then
+    // assert the subdirs are still absent.
+    const dbPath = path.join(tmpDir, ".pi-mind-index.db");
+    // Seed a minimal DB with the KG tables only (no MemoryCore, so no
+    // mkdirSync). We open a read-write connection, init the schema
+    // once via KnowledgeGraph, add a triple, then close.
+    {
+      const seedDb = new Database(dbPath);
+      const seedKg = new KnowledgeGraph(seedDb);
+      seedKg.addTriple("alice", "owns", "book");
+      seedDb.close();
+    }
+    expect(fs.existsSync(path.join(tmpDir, "knowledge"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "raw"))).toBe(false);
+
+    const r = runRebuildKg(["--kg-health"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("Summary:");
+    // knowledge/ and raw/ MUST still be absent — the read-only path
+    // doesn't mkdirSync.
+    expect(fs.existsSync(path.join(tmpDir, "knowledge"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "raw"))).toBe(false);
+  });
+
+  it("prints a graceful 'KG tables not found' tip when DB exists but has no kg_* tables", { timeout: 60_000 }, () => {
+    // Create a DB file with an unrelated schema (simulates a partial
+    // wipe or a foreign writer). The CLI must NOT crash; it must
+    // say the KG tables are missing and point at --rebuild-kg --apply.
+    const dbPath = path.join(tmpDir, ".pi-mind-index.db");
+    const seedDb = new Database(dbPath);
+    seedDb.exec("CREATE TABLE unrelated (x INTEGER);");
+    seedDb.close();
+    expect(fs.existsSync(dbPath)).toBe(true);
+
+    const r = runRebuildKg(["--kg-health"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/KG tables not found/);
+    expect(r.stdout).toMatch(/--rebuild-kg --apply/);
+    // No Summary section should be printed on this branch.
+    expect(r.stdout).not.toMatch(/Summary:/);
   });
 });
 
