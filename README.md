@@ -4,7 +4,7 @@
 
 > v0.13.1 · 296 tests passing · dogfooded on this repo · MIT
 
-A monorepo of capability packages for [pi](https://github.com/earendil-works/pi) (the coding-agent runtime). pi-mind turns any repo into a persistent, self-maintaining knowledge store: the agent writes memories as markdown files with YAML frontmatter, retrieves them by relevance, and never silently mutates state without your approval.
+A monorepo of capability packages for [pi](https://github.com/earendil-works/pi) (the coding-agent runtime). pi-mind turns any repo into a persistent, self-maintaining knowledge store: the agent writes memories as markdown files with YAML frontmatter, retrieves them by relevance, and never changes future behavior without an approval gate; memory writes happen as visible explicit tool calls.
 
 ## What you get
 
@@ -12,7 +12,7 @@ A monorepo of capability packages for [pi](https://github.com/earendil-works/pi)
 - **Hybrid retrieval.** FTS5 keyword search + vector similarity (Ollama `nomic-embed-text`) + a SQLite-backed knowledge graph (entities and triples), merged per turn. The agent only sees what's relevant to the current task.
 - **Passive by design.** No background curator, no autonomous LLM loops writing on your behalf. Every `remember_this` and `observe` is an explicit tool call in a visible turn. Memory-audit flags issues; humans fix them.
 - **Ask-first skill authoring.** Agent proposes new skills with `create_skill`; you approve before the file is written. Skills change future behavior, so the gate stays with the user.
-- **One install, zero daemons.** Pure Node + SQLite. No cron jobs required (an optional cron snippet is documented for scheduled audit).
+- **No required daemon.** Pure Node + SQLite. Ollama is optional for vector search; FTS5 keyword search works without it. No cron jobs required (an optional cron snippet is documented for scheduled audit).
 
 ## 30-second demo
 
@@ -22,7 +22,7 @@ $ cd ~/my-repo && pi
 pi> remember this: I prefer ripgrep over grep for code search
 pi> /exit
 
-# Session 2 (any day, any machine, same repo)
+# Session 2 (any day, same repo checkout — the agent reads from .pi-mind/)
 $ cd ~/my-repo && pi
 pi> what search tool do I prefer?
 → "ripgrep — see .pi-mind/knowledge/<date>-…md"
@@ -33,7 +33,7 @@ The "memory" is the same `.md` file you can `cat`, `grep`, and commit. No magic,
 ## Quickstart
 
 ```bash
-# 1. Install the pi runtime (one-time, global)
+# 1. Install the pi runtime (one-time, global). GitHub: github.com/earendil-works/pi.
 npm i -g @earendil-works/pi-coding-agent
 
 # 2. Add memory + ask-first skills to your repo
@@ -90,7 +90,7 @@ See [AGENTS.md](AGENTS.md#design-principles) for the human-in-the-loop autonomy 
 
 ## History
 
-A short note on what the repo no longer carries: `@shog-lab/pi-goals` (an autonomous-loop package) and `packages/chrome` (a Chrome runtime built on `agent-browser` + RxJS) were both removed. pi-goals' pattern is out of scope for this ecosystem; compose `pi-bus` + `pi-subagent` + `git worktree` for human-in-the-loop alternatives. `pi-toolkit` 0.3.0 extracted `spawn_subagent` to its own package; 0.4.0 dropped `understand_image` once models gained native vision.
+Older autonomous-loop (`pi-goals`) and browser-runtime (`packages/chrome`) packages were removed. Per-package CHANGELOGs and READMEs carry the migration details.
 
 ## License
 
