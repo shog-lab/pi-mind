@@ -241,6 +241,21 @@ describe('KnowledgeGraph', () => {
       expect(ctx).toBe('');
     });
 
+    it("does NOT prefix-match 'car' against entity 'carol' (prefix threshold >=4)", () => {
+      // Regression for a real false-positive: at prefix threshold 3,
+      // a 3-letter query token would match any entity token of >=3
+      // letters that starts with it. "car" → "carol" / "card" /
+      // "carbon" etc. Bumping the threshold to 4 cuts the common
+      // 3-letter stems (car, mat, pol, ...) while keeping the
+      // semantic ones alive ("auth" is 4 letters, exact-token
+      // matches anyway).
+      kg.addTriple('carol', 'role', 'reviewer');
+      const ctx = kg.buildContext('car');
+      expect(ctx).not.toContain('carol');
+      expect(ctx).not.toContain('reviewer');
+      expect(ctx).toBe('');
+    });
+
     it("does NOT noise-match 'island' or 'go-service' on query 'what is going on'", () => {
       // "what", "is", "on" are KG_STOPWORDS and are filtered before the
       // lookup. The only surviving query token is "going" (length 6,

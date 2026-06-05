@@ -495,14 +495,17 @@ export class KnowledgeGraph {
     // Step 1: token-bounded matching for ASCII / hyphenated / underscored
     // entity names. For each query token:
     //   - exact lookup (preserves the "auth" → entity-with-token-auth case)
-    //   - if query token is long enough (>=3), also do token-prefix lookup
-    //     (preserves "auth" → "auth-service"). NOT reverse-prefix: "go"
-    //     must not match "go-service" via the OTHER direction.
+    //   - if query token is long enough (>=4), also do token-prefix lookup
+    //     (preserves "auth" → "auth-service" since "auth" is length 4).
+    //     Threshold of 4, not 3, because at 3 the false-positive rate
+    //     spikes on common 3-letter stems: "car" → "carol", "mat" →
+    //     "matrix", "pol" → "policy". NOT reverse-prefix: "go" must not
+    //     match "go-service" via the OTHER direction.
     for (const qt of queryTokens) {
       if (KG_STOPWORDS.has(qt)) continue;
       const exact = this._entityTokenIndex!.get(qt);
       if (exact) for (const e of exact) matched.add(e);
-      if (qt.length >= 3) {
+      if (qt.length >= 4) {
         for (const [idxTok, ents] of this._entityTokenIndex!) {
           if (idxTok !== qt && idxTok.startsWith(qt)) {
             for (const e of ents) matched.add(e);
