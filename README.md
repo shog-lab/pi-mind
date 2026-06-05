@@ -5,7 +5,7 @@ Agent capability packages for [pi-coding-agent](https://github.com/earendil-work
 ## Packages
 
 ### [`@shog-lab/pi-mind-core`](packages/core/) — the core
-Persistent memory + ask-first skill authoring. Three-layer memory model: **raw/** (event stream), **knowledge/** (compiled facts as markdown), **graph/** (entity-relationship triples). FTS5 + vector + KG retrieval. Memory is passive (no background curator); skills are written only after you approve a proposal. Memory-audit loop, subject classification, schema linting.
+Persistent memory + ask-first skill authoring. Two layers on disk + one derived index: **raw/** (event stream), **knowledge/** (compiled facts as markdown — also the SoT for the KG via its `triples:` frontmatter field), and the **KG index** (SQLite `kg_*` tables in `.pi-mind/.pi-mind-index.db`, rebuilt from frontmatter on every sync; not a separate `graph/` directory). FTS5 + vector + KG retrieval. Memory is passive (no background curator); skills are written only after you approve a proposal. Memory-audit loop, subject classification, schema linting.
 
 ### [`@shog-lab/pi-toolkit`](packages/toolkit/) — agent-facing tools
 Drop-in extensions the LLM calls at runtime: **web_search** (via mmx CLI — fill MiniMax's missing search capability), **mcp-bridge** (proxy any MCP server as pi tools). _0.3.0 removed `spawn_subagent` — see pi-subagent below; 0.4.0 removed `understand_image` now that models like MiniMax-M3 have native vision._

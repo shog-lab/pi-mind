@@ -8,7 +8,7 @@ Inspired by [Karpathy's LLM Wiki](https://github.com/luotwo/llm-wiki) — knowle
 
 ## Why
 
-LLM agents that lose everything between sessions can't accumulate. RAG-only setups see history as searchable chunks but don't learn from contradictions, deprecations, or refinements. pi-mind treats memory as a **three-layer system** with a real consolidation loop, gives the agent tools to write/read/lint its own knowledge, and gets out of the way otherwise.
+LLM agents that lose everything between sessions can't accumulate. RAG-only setups see history as searchable chunks but don't learn from contradictions, deprecations, or refinements. pi-mind treats memory as a **two-layer system** (raw event stream + curated knowledge markdown — the SoT for the KG via the frontmatter `triples:` field) with a derived SQLite index, gives the agent tools to write/read/lint its own knowledge, and gets out of the way otherwise.
 
 ## Memory model
 

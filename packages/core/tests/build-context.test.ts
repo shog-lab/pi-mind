@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import Database from 'better-sqlite3';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
 const { MemoryCore, serializeFrontmatter } = (await import(
@@ -113,5 +114,50 @@ describe('buildContext', () => {
     expect(ctx).toContain('alice');
     expect(ctx).toContain('owns');
     expect(ctx).toContain('auth-service');
+  });
+});
+
+describe('buildContext — auto-generated knowledge/index.md is not in retrieval', () => {
+  it('after two consecutive syncIndex calls, index.md is NOT in memory_fts', async () => {
+    // Regression for the FTS5 pollution bug: the auto-generated
+    // knowledge/index.md is written by syncIndex()'s generateIndex()
+    // tail call. On the NEXT syncIndex, collectMdFiles picks it up,
+    // sees no frontmatter, runs auto-heal (adding tier=L2,
+    // tags=[auto-healed]), and inserts it into memory_fts — so a
+    // later retrieval query (e.g. "ripgrep") could surface the
+    // auto-healed index page as a low-relevance long-term-memory
+    // hit. The fix: syncIndex must skip index.md at the top of the
+    // processing loop, same as rebuildKGFromFiles already does for KG.
+    writeKnowledge('pref.md', 'User prefers ripgrep over grep', { type: 'user', tier: 'L1' });
+    await mc.syncIndex();
+    // index.md now exists on disk (auto-generated, no frontmatter).
+    // Run syncIndex AGAIN — this is the path that used to auto-heal
+    // index.md and pollute memory_fts.
+    await mc.syncIndex();
+    // Now assert index.md is not a row in memory_fts.
+    const db = new Database(path.join(tmpDir, '.pi-mind-index.db'), { readonly: true });
+    const rows = db
+      .prepare("SELECT file_path, tier, tags FROM memory_fts WHERE file_path LIKE '%/index.md'")
+      .all() as Array<{ file_path: string; tier: string; tags: string }>;
+    db.close();
+    expect(rows).toEqual([]);
+  });
+
+  it('buildContext never returns the auto-generated index.md as a long-term-memory hit', async () => {
+    // End-to-end version of the previous test: even if some other
+    // path inserts index.md into memory_fts (e.g. a stale DB from
+    // an older version), the fix's defensive DELETE in the skip
+    // block must evict it on the next syncIndex, and buildContext
+    // must not surface it.
+    writeKnowledge('pref.md', 'User prefers ripgrep over grep', { type: 'user', tier: 'L1' });
+    await mc.syncIndex();
+    await mc.syncIndex();
+    const ctx = await mc.buildContext('ripgrep', { skipL1: true });
+    expect(ctx).toBe('');
+    // Also: even with skipL1=false, the index.md body (# Wiki Index,
+    // Auto-generated...) must not leak into the rendered context.
+    const ctx2 = await mc.buildContext('ripgrep');
+    expect(ctx2).not.toMatch(/Wiki Index/);
+    expect(ctx2).not.toMatch(/Auto-generated\./);
   });
 });
