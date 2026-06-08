@@ -1,6 +1,6 @@
 # Proposal: 把 eval/ 排除出 pi-mind-core 的 npm tarball
 
-**状态:** 待做(2026-06-02 发现,暂缓——非紧急,不影响功能)。
+**状态:** 已解决(2026-06-08,迁到 root-level private workspace `eval/longmemeval/`)。
 **优先级:** 低。纯发布卫生问题,无功能影响。
 
 ## 问题
@@ -13,7 +13,7 @@ AGENTS.md 第 17 行明确:LongMemEval harness(`eval/longmemeval/`,原 `packages
 
 结果:`@shog-lab/pi-mind-core@0.7.0` 的 tarball 含 `dist/eval/**`(cli / runner / report / datasets / drivers / scoring 等),违反 "not published" 的本意。
 
-**根因**:2026-05-27 把 `packages/eval/` 折进 `packages/core/eval/` 时,只搬了代码位置,没处理"它会被 core 的 build + files 通配顺带发出去"这个副作用。**已于 2026-06-04 解决**: harness 迁到 root-level private workspace `eval/longmemeval/`,`private: true`,不在 core 的 `files` 里,core 的 build/tsc 也不再触发它。
+**根因**:2026-05-27 把 `packages/eval/` 折进 `packages/core/eval/` 时,只搬了代码位置,没处理"它会被 core 的 build + files 通配顺带发出去"这个副作用。**已于 2026-06-08 解决**: harness 迁到 root-level private workspace `eval/longmemeval/`,`private: true`,不在 core 的 `files` 里,core 的 build/tsc 也不再触发它。
 
 ## 影响
 
