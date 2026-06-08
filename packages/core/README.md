@@ -199,15 +199,16 @@ pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Ot
 
 ## Benchmarks
 
-`eval/` ships the LongMemEval harness (datasets, pi-session driver, runner, report). Produces `hypothesis.jsonl` to feed into LongMemEval's official Python evaluator. **Internal dev tooling; NOT published** — `tsconfig.json` excludes `eval/**/*` from the build, so the harness is not in the npm tarball. Run via `tsx` directly, see [`eval/README.md`](eval/README.md) for the out-of-process scoring pipeline.
+The LongMemEval harness moved to a top-level private workspace at [`eval/longmemeval/`](../../eval/longmemeval/) on 2026-06-04. It is **internal dev tooling; NOT published** — the workspace has `private: true` and is not in any package's `files`. Build the memory extension first, then run from the monorepo root:
 
 ```bash
-npm run eval --workspace=packages/core -- --split oracle --limit 5 --out /tmp/eval-run
+npm run build --workspace=@shog-lab/pi-mind-core
+npm run eval:longmemeval -- --split oracle --limit 5 --out /tmp/eval-run
 ```
 
-The harness bypasses any container or daemon — it imports `MemoryCore` directly. This makes the memory module independently testable.
+The harness bypasses any container or daemon — it spawns `pi` via `spawnPi` (from `@shog-lab/pi-utils`) with an explicit `-e` path to the compiled memory extension. Scoring has two paths: a TS port of LongMemEval's official `get_anscheck_prompt` (run with `--judge`), or feed `hypothesis.jsonl` to LongMemEval's official Python evaluator. See the eval workspace's [README](../../eval/longmemeval/README.md) for both pipelines.
 
-History: `eval/` lived in its own `packages/eval/` workspace through 2026-05-26. Folded into core on 2026-05-27 because it only ever evaluated memory and was never published — a workspace boundary wasn't earning its overhead. The git-tracked rename preserves history. The separate `scripts/verify-worth-remembering.ts` precision-checker shipped through 0.5.x — removed in 0.6.0 along with the `worth-remembering-llm` detector itself (no detector to verify).
+History: the harness lived at `packages/eval/` (workspace) through 2026-05-26, then `packages/core/eval/` through 2026-06-04, then `eval/longmemeval/` (private top-level workspace) — always private, never published, each move was a `git mv` that preserves history.
 
 ## Architecture
 

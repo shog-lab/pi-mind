@@ -1,0 +1,25 @@
+{
+  "name": "@shog-lab/pi-mind-eval",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LongMemEval benchmark harness for pi-mind memory. Horizontal/vertical comparison of memory implementations. NOT published.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "eval": "tsx cli.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@shog-lab/pi-utils": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

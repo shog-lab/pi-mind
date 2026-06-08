@@ -10,12 +10,14 @@
     "packages/core",
     "packages/toolkit",
     "packages/bus",
-    "packages/subagent"
+    "packages/subagent",
+    "eval/longmemeval"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "eval:longmemeval": "npm run eval --workspace=@shog-lab/pi-mind-eval --"
   },
   "engines": {
     "node": ">=20"

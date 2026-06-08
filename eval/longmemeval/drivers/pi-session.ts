@@ -43,8 +43,13 @@ export interface PiSessionDriverOptions {
  */
 function autoResolveMemoryExtension(): string | null {
   let dir = dirname(realpathSync(fileURLToPath(import.meta.url)));
-  for (let i = 0; i < 8; i++) {
-    const candidate = join(dir, "packages", "memory", "dist", "extensions", "memory", "index.js");
+  // The compiled entry point lives at
+  //   <repo-root>/packages/core/dist/extensions/memory/index.js
+  // This driver currently lives at <repo-root>/eval/longmemeval/drivers/.
+  // Walk up at most 6 levels (covers both "packages/core/eval" legacy and
+  // "eval/longmemeval" current locations plus a margin).
+  for (let i = 0; i < 6; i++) {
+    const candidate = join(dir, "packages", "core", "dist", "extensions", "memory", "index.js");
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -63,7 +68,7 @@ export class PiSessionDriver implements Driver {
     if (!resolved) {
       throw new Error(
         "PiSessionDriver: could not locate pi-mind memory extension. " +
-        "Build the memory package first (`npm run build --workspace packages/core`), " +
+        "Build the core package first (`npm run build --workspace=@shog-lab/pi-mind-core`), " +
         "or pass memoryExtensionPath explicitly.",
       );
     }

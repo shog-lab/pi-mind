@@ -283,4 +283,4 @@ node packages/core/scripts/knowledge-lint.ts   # Check knowledge/ schema health
 | `PI_AGENT_NAME` | pi-bus | Override auto-generated friendly bus name (e.g. `calm-fox-x2k`) |
 | `MODEL` | pi-subagent (`spawn_subagent`) | Model for child pi (default: `minimax-cn/MiniMax-M2.7`) |
 | `MINIMAX_API_KEY` / `MINIMAX_CN_API_KEY` | toolkit `web-search` | mmx auth (fallback to `~/.mmx/config.json` if env unset) |
-| `DEEPSEEK_API_KEY` | LongMemEval driver in `packages/core/eval/` | Judge model for benchmark scoring |
+| `DEEPSEEK_API_KEY` | LongMemEval driver in `eval/longmemeval/` | Judge model for benchmark scoring |

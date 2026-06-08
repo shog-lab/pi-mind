@@ -15,8 +15,6 @@
     "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json' && cp dist/lib/init.js bin/init-lib.js",
     "dev": "tsc --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit",
-    "eval": "tsx eval/cli.ts",
-    "eval:typecheck": "tsc --noEmit -p eval/tsconfig.json",
     "lint:knowledge": "tsx scripts/knowledge-lint.ts",
     "test": "vitest run",
     "prepare": "npm run build",

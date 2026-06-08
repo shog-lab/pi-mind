@@ -5,7 +5,7 @@
 
 ## 问题
 
-AGENTS.md 第 17 行明确:LongMemEval harness(`packages/core/eval/`)是 **"Internal dev tooling; not published."**
+AGENTS.md 第 17 行明确:LongMemEval harness(`eval/longmemeval/`,原 `packages/core/eval/`,再前 `packages/eval/`)是 **"Internal dev tooling; not published."**
 
 但实际上它**被打进了已发布的 npm 包**:
 - `tsconfig`(core)把 `eval/**` 编译进 `dist/eval/`(~19 个 .js + .d.ts 文件)
@@ -13,7 +13,7 @@ AGENTS.md 第 17 行明确:LongMemEval harness(`packages/core/eval/`)是 **"Inte
 
 结果:`@shog-lab/pi-mind-core@0.7.0` 的 tarball 含 `dist/eval/**`(cli / runner / report / datasets / drivers / scoring 等),违反 "not published" 的本意。
 
-**根因**:2026-05-27 把 `packages/eval/` 折进 `packages/core/eval/` 时,只搬了代码位置,没处理"它会被 core 的 build + files 通配顺带发出去"这个副作用。
+**根因**:2026-05-27 把 `packages/eval/` 折进 `packages/core/eval/` 时,只搬了代码位置,没处理"它会被 core 的 build + files 通配顺带发出去"这个副作用。**已于 2026-06-04 解决**: harness 迁到 root-level private workspace `eval/longmemeval/`,`private: true`,不在 core 的 `files` 里,core 的 build/tsc 也不再触发它。
 
 ## 影响
 
