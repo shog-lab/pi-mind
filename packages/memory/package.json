@@ -1,7 +1,7 @@
 {
   "name": "@shog-lab/pi-memory",
-  "version": "0.14.0",
-  "description": "Give pi a mind: portable, self-maintaining memory for pi-coding-agent. Memory is passive — writes are explicit (remember_this / observe), retrieval is hybrid (vector + FTS5 + KG). Ships ask-first skill authoring (create_skill / update_skill).",
+  "version": "0.14.1",
+  "description": "Persistent, inspectable memory for pi-coding-agent: explicit writes, hybrid retrieval (vector + FTS5 + KG), markdown storage, and ask-first skill authoring.",
   "type": "module",
   "license": "MIT",
   "repository": {

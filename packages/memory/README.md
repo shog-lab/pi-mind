@@ -1,6 +1,6 @@
 # @shog-lab/pi-memory
 
-**Give pi a mind: portable, self-maintaining memory as a drop-in [pi](https://github.com/earendil-works/pi) extension.**
+**Persistent, inspectable memory as a drop-in [pi](https://github.com/earendil-works/pi) extension.**
 
 A pi extension package that turns any repo into the home of a persistent agent. Memory survives across sessions, accumulates over time, and the agent maintains its own knowledge through a periodic memory-audit.
 
@@ -254,7 +254,7 @@ Key implementation notes:
 
 ## Status
 
-Stable core, active development. `@shog-lab/pi-memory@0.14.0` is published; this repo dogfoods it (run `pi` here to see the agent work on its own codebase). 296 tests pass across 18 test files (`npm test`). Memory model, schema, lint, memory-audit, and forget are stable APIs; smaller surfaces (tools, hooks) may evolve.
+Stable core, active development. `@shog-lab/pi-memory@0.14.1` is published; this repo dogfoods it (run `pi` here to see the agent work on its own codebase). 296 tests pass across 18 test files (`npm test`). Memory model, schema, lint, memory-audit, and forget are stable APIs; smaller surfaces (tools, hooks) may evolve.
 
 > Note: `@shog-lab/pi-memory@0.14.0` is the successor to `@shog-lab/pi-mind-core@0.13.1`. The package was renamed on 2026-06-09; the on-disk directory moved from `packages/core/` to `packages/memory/`, the npm name flipped, and the version was bumped (a rename is a breaking surface change for users, hence minor-bump from 0.13.1 → 0.14.0). The CLI binaries (`pi-mind-init`, `pi-mind-lint`) are intentionally **unchanged** to avoid a one-shot break for existing users — the rename is about the npm/distribution surface, not the CLI surface.
 
