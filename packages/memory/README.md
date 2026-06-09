@@ -1,4 +1,4 @@
-# @shog-lab/pi-mind-core
+# @shog-lab/pi-memory
 
 **Give pi a mind: portable, self-maintaining memory as a drop-in [pi](https://github.com/earendil-works/pi) extension.**
 
@@ -30,7 +30,7 @@ Two layers plus a derived KG index: **raw** (append-only event stream), **knowle
 ## Install
 
 ```bash
-npm i -D @shog-lab/pi-mind-core
+npm i -D @shog-lab/pi-memory
 ```
 
 `postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/` directories. Idempotent — re-running `npm install` is safe.
@@ -41,7 +41,7 @@ npm i -D @shog-lab/pi-mind-core
 
 ```bash
 cd ~/my-repo
-npm i -D @shog-lab/pi-mind-core
+npm i -D @shog-lab/pi-memory
 
 pi                          # interactive: memory auto-loaded, system prompt injected
 # > "记一下 I prefer pm2 over forever for process management"
@@ -113,7 +113,7 @@ triples: [["alice", "owns", "auth-service"], ["alice", "role", "backend-lead"]]
 - **Predicate**: snake_case verb phrase. `addTriple` normalizes spaces to `_` on ingest, so `uses model` and `uses_model` end up the same — write it snake_case anyway. No copula (`is`, `has`), no `related_to` (pick a direction).
 - **Direction**: pick one. Never mix `owns` / `owner_of` / `owned_by` — that's relation fragmentation.
 
-Good: `carol uses_model DeepSeek V4` · `pi-mind-core released_version 0.12.0` · `pi-mind-lint supports_flag --rebuild-kg`. Bad: `x is y` · `a has b` · `p related_to q`.
+Good: `carol uses_model DeepSeek V4` · `pi-memory released_version 0.12.0` · `pi-mind-lint supports_flag --rebuild-kg`. Bad: `x is y` · `a has b` · `p related_to q`.
 
 Audit the current state at any time:
 
@@ -202,7 +202,7 @@ pi-mind defines the structure of `$PI_MIND_DIR/raw/` but **does not own it**. Ot
 The LongMemEval harness moved to a top-level private workspace at [`eval/longmemeval/`](../../eval/longmemeval/) on 2026-06-08. It is **internal dev tooling; NOT published** — the workspace has `private: true` and is not in any package's `files`. Build the memory extension first, then run from the monorepo root:
 
 ```bash
-npm run build --workspace=@shog-lab/pi-mind-core
+npm run build --workspace=@shog-lab/pi-memory
 npm run eval:longmemeval -- --split oracle --limit 5 --out /tmp/eval-run
 ```
 
@@ -254,7 +254,9 @@ Key implementation notes:
 
 ## Status
 
-Stable core, active development. `@shog-lab/pi-mind-core@0.13.1` is published; this repo dogfoods it (run `pi` here to see the agent work on its own codebase). 296 tests pass across 18 test files (`npm test`). Memory model, schema, lint, memory-audit, and forget are stable APIs; smaller surfaces (tools, hooks) may evolve.
+Stable core, active development. `@shog-lab/pi-memory@0.14.0` is published; this repo dogfoods it (run `pi` here to see the agent work on its own codebase). 296 tests pass across 18 test files (`npm test`). Memory model, schema, lint, memory-audit, and forget are stable APIs; smaller surfaces (tools, hooks) may evolve.
+
+> Note: `@shog-lab/pi-memory@0.14.0` is the successor to `@shog-lab/pi-mind-core@0.13.1`. The package was renamed on 2026-06-09; the on-disk directory moved from `packages/core/` to `packages/memory/`, the npm name flipped, and the version was bumped (a rename is a breaking surface change for users, hence minor-bump from 0.13.1 → 0.14.0). The CLI binaries (`pi-mind-init`, `pi-mind-lint`) are intentionally **unchanged** to avoid a one-shot break for existing users — the rename is about the npm/distribution surface, not the CLI surface.
 
 Roadmap (no fixed dates):
 

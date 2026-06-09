@@ -1,15 +1,15 @@
 {
-  "name": "@shog-lab/pi-mind-core",
-  "version": "0.13.1",
+  "name": "@shog-lab/pi-memory",
+  "version": "0.14.0",
   "description": "Give pi a mind: portable, self-maintaining memory for pi-coding-agent. Memory is passive — writes are explicit (remember_this / observe), retrieval is hybrid (vector + FTS5 + KG). Ships ask-first skill authoring (create_skill / update_skill).",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shog-lab/pi-mind.git",
-    "directory": "packages/core"
+    "directory": "packages/memory"
   },
-  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/core",
+  "homepage": "https://github.com/shog-lab/pi-mind/tree/main/packages/memory",
   "bugs": "https://github.com/shog-lab/pi-mind/issues",
   "scripts": {
     "build": "rm -rf dist && tsc && node ../../tools/copy-static.mjs 'extensions/**/package.json' && cp dist/lib/init.js bin/init-lib.js",

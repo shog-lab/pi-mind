@@ -30,7 +30,7 @@ export interface PiSessionDriverOptions {
   timeoutMs?: number;
   /**
    * Path to pi-mind's compiled memory extension entry (index.js). If omitted,
-   * the driver walks up from this module to find packages/core/dist/extensions/memory/index.js
+   * the driver walks up from this module to find packages/memory/dist/extensions/memory/index.js
    * — works when running inside the pi-mind monorepo, fails loudly otherwise.
    */
   memoryExtensionPath?: string;
@@ -38,19 +38,19 @@ export interface PiSessionDriverOptions {
 
 /**
  * Auto-resolve the memory extension by walking up from this file's location
- * to the monorepo root, then into packages/core.
+ * to the monorepo root, then into packages/memory.
  *
  * Returns null if not found (caller decides how to fail).
  */
 function autoResolveMemoryExtension(): string | null {
   let dir = dirname(realpathSync(fileURLToPath(import.meta.url)));
   // The compiled entry point lives at
-  //   <repo-root>/packages/core/dist/extensions/memory/index.js
+  //   <repo-root>/packages/memory/dist/extensions/memory/index.js
   // This driver currently lives at <repo-root>/eval/longmemeval/drivers/.
   // Walk up at most 6 levels (covers both "packages/core/eval" legacy and
   // "eval/longmemeval" current locations plus a margin).
   for (let i = 0; i < 6; i++) {
-    const candidate = join(dir, "packages", "core", "dist", "extensions", "memory", "index.js");
+    const candidate = join(dir, "packages", "memory", "dist", "extensions", "memory", "index.js");
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -69,7 +69,7 @@ export class PiSessionDriver implements Driver {
     if (!resolved) {
       throw new Error(
         "PiSessionDriver: could not locate pi-mind memory extension. " +
-        "Build the core package first (`npm run build --workspace=@shog-lab/pi-mind-core`), " +
+        "Build the memory package first (`npm run build --workspace=@shog-lab/pi-memory`), " +
         "or pass memoryExtensionPath explicitly.",
       );
     }

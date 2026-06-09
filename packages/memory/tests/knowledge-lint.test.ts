@@ -371,8 +371,8 @@ describe("knowledge-lint --rebuild-kg --apply", () => {
 // Background: pre-fix, only --rebuild-kg used git-common-dir-aware
 // resolvePiMindDir. Normal lint/fix/prune used the naive
 // `path.join(process.cwd(), ".pi-mind")`, so running `pi-mind-lint` from a
-// workspace subdir (e.g. packages/core/) would look for
-// packages/core/.pi-mind instead of the main repo's .pi-mind.
+// workspace subdir (e.g. packages/memory/) would look for
+// packages/memory/.pi-mind instead of the main repo's .pi-mind.
 //
 // These tests pin the unified behavior: env PI_MIND_DIR wins, else
 // resolvePiMindDir(cwd) is used, for every mode. --dir still overrides

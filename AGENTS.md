@@ -9,12 +9,12 @@ Guide for AI agents working in this repository.
 | Workspace | npm name | Status | Purpose |
 |---|---|---|---|
 | `packages/utils` | `@shog-lab/pi-utils` | published | Shared infra: `spawnPi`, `resolvePiMindDir`. Depended on by every other workspace. |
-| `packages/core` | `@shog-lab/pi-mind-core` | published | Persistent memory + ask-first skill authoring. Layers: raw, knowledge, KG. |
+| `packages/memory` | `@shog-lab/pi-memory` | published | Persistent memory + ask-first skill authoring. Layers: raw, knowledge, KG. (Renamed from `@shog-lab/pi-mind-core` in 0.14.0, 2026-06-09.) |
 | `packages/toolkit` | `@shog-lab/pi-toolkit` | published | Common pi extensions: web search, MCP server bridge. (0.3.0 removed `spawn_subagent` → pi-subagent; 0.4.0 removed `understand_image` — models have native vision now.) |
 | `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
 | `packages/subagent` | `@shog-lab/pi-subagent` | published | Single `spawn_subagent` tool — fire-and-forget child pi via spawnPi. Extracted from pi-toolkit 0.3.0. |
 
-LongMemEval benchmark harness lives at `eval/longmemeval/` as a private top-level workspace (moved from `packages/core/eval/` on 2026-06-08; was its own workspace `packages/eval/` through 2026-05-26). Internal benchmark tooling for pi-mind memory horizontal/vertical comparisons; not published. Build core first, then run with `npm run eval:longmemeval -- <args>`.
+LongMemEval benchmark harness lives at `eval/longmemeval/` as a private top-level workspace (moved from `packages/memory/eval/` on 2026-06-08; was its own workspace `packages/eval/` through 2026-05-26). Internal benchmark tooling for pi-mind memory horizontal/vertical comparisons; not published. Build the memory package first, then run with `npm run eval:longmemeval -- <args>`.
 
 `@shog-lab/pi-goals` (ralph) was published through 0.5.1 then **deprecated + removed from the monorepo on 2026-05-28** (see Design Principles below). Published versions remain installable from npm with a deprecation warning; pin `@shog-lab/pi-goals@0.5.1` if you depend on the old behavior.
 
@@ -83,8 +83,8 @@ A `remember_this` call routed through three agents via bus is still legal **if t
 | Package | Alignment | Note |
 |---|---|---|
 | `pi-utils` | ✅ Pure infra | No autonomy concerns |
-| `pi-mind-core` memory (`remember_this`, retrieval, retention) | ✅ Per principle 2 | `worth-remembering-llm` removed in 0.6.0 — memory is now passive |
-| `pi-mind-core` skill-evolution | ✅ Per principle 1 | `write_skill` replaced by ask-first `create_skill` + `update_skill` in 0.6.0 |
+| `pi-memory` memory (`remember_this`, retrieval, retention) | ✅ Per principle 2 | `worth-remembering-llm` removed in 0.6.0 — memory is now passive |
+| `pi-memory` skill-evolution | ✅ Per principle 1 | `write_skill` replaced by ask-first `create_skill` + `update_skill` in 0.6.0 |
 | `pi-toolkit` (web-search / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
 | `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
 | `pi-bus` | ✅ The substrate enabling principle 3 | — |
@@ -102,7 +102,7 @@ npm run typecheck                    # Typecheck all workspaces
 Per-workspace (use path or full scoped name):
 
 ```bash
-npm run build --workspace=packages/core
+npm run build --workspace=packages/memory
 npm run test --workspace=packages/bus
 npm run typecheck --workspace=packages/toolkit
 ```
@@ -110,7 +110,7 @@ npm run typecheck --workspace=packages/toolkit
 Watch mode:
 
 ```bash
-npx tsc -w -p packages/core
+npx tsc -w -p packages/memory
 npx tsc -w -p packages/bus
 ```
 
@@ -122,8 +122,8 @@ npx tsc -w -p packages/bus
 
 | Extension | Source dir | Purpose |
 |---|---|---|
-| `memory` | `packages/core/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]); tools: `remember_this` / `recall_memory` / `observe` / `update_memory` / `mark_memory_audit_complete`. 0.6.0 removed the `worth-remembering-llm` auto-capture (memory is passive). |
-| `skill-evolution` | `packages/core/extensions/skill-evolution/` | `create_skill` + `update_skill` tools — agent proposes in chat, gets explicit user approval, then writes `.pi/skills/<name>/SKILL.md` (with `.bak.<ts>` on overwrite). Backs the `define-skill` / `revise-skill` skills. (0.6.0 replaced the prior `write_skill` per Design Principles.) |
+| `memory` | `packages/memory/extensions/memory/` | Persistent memory: hybrid retrieval (vector + FTS5 + KG + [[link]]); tools: `remember_this` / `recall_memory` / `observe` / `update_memory` / `mark_memory_audit_complete`. 0.6.0 removed the `worth-remembering-llm` auto-capture (memory is passive). |
+| `skill-evolution` | `packages/memory/extensions/skill-evolution/` | `create_skill` + `update_skill` tools — agent proposes in chat, gets explicit user approval, then writes `.pi/skills/<name>/SKILL.md` (with `.bak.<ts>` on overwrite). Backs the `define-skill` / `revise-skill` skills. (0.6.0 replaced the prior `write_skill` per Design Principles.) |
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |
 | `subagent` | `packages/subagent/extensions/subagent/` | `spawn_subagent` tool — fire-and-forget child pi via `spawnPi`. (Moved from pi-toolkit in toolkit 0.3.0.) |
@@ -135,11 +135,11 @@ Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.
 
 | Skill | Source dir | Purpose |
 |---|---|---|
-| `memory-audit` | `packages/core/skills/memory-audit/` | Memory hygiene audit loop. |
-| `knowledge-lint` | `packages/core/skills/knowledge-lint/` | Schema validation + auto-fix for knowledge entries. (Was `wiki-lint` before 0.3.0.) |
-| `scheduling` | `packages/core/skills/scheduling/` | Cron setup helper. |
-| `define-skill` | `packages/core/skills/define-skill/` | Compose a brand-new skill via `create_skill` (ask-first). |
-| `revise-skill` | `packages/core/skills/revise-skill/` | Update an existing skill via `update_skill` (ask-first). |
+| `memory-audit` | `packages/memory/skills/memory-audit/` | Memory hygiene audit loop. |
+| `knowledge-lint` | `packages/memory/skills/knowledge-lint/` | Schema validation + auto-fix for knowledge entries. (Was `wiki-lint` before 0.3.0.) |
+| `scheduling` | `packages/memory/skills/scheduling/` | Cron setup helper. |
+| `define-skill` | `packages/memory/skills/define-skill/` | Compose a brand-new skill via `create_skill` (ask-first). |
+| `revise-skill` | `packages/memory/skills/revise-skill/` | Update an existing skill via `update_skill` (ask-first). |
 | `agent-browser` | `node_modules/agent-browser/skills/agent-browser/` | Browser automation (external dep). |
 
 (The `prd` / `prd-compile` / `goals-verify` skills were removed with `packages/ralph/` on 2026-05-28. If you want PRD-style work, write the markdown yourself and compose `pi-bus` + `pi-subagent` + git worktree for execution with a human keeper in the loop.)
@@ -186,7 +186,7 @@ Curated `triples:` in `knowledge/*.md` is the SoT for the SQLite KG index. Fragm
 - **Direction**: pick one. If the relation is asymmetric (X owns Y), write it that direction. If symmetric (X knows Y), write either direction but stay consistent across the corpus. Never mix `owns` / `owner_of` / `owned_by` — pick one.
 - **Examples** (good):
   - `carol uses_model DeepSeek V4`
-  - `pi-mind-core released_version 0.12.0`
+  - `pi-memory released_version 0.12.0`
   - `pi-mind-lint supports_flag --rebuild-kg`
 - **Examples** (bad — would get surfaced by `pi-mind-lint --kg-health`):
   - `x is y`  — `is` is too short to carry signal
@@ -201,12 +201,12 @@ Run `npx pi-mind-lint --kg-health` (read-only) to see the current state: top pre
 |---|---|
 | `packages/utils/src/spawn-pi.ts` | Shared pi spawn — JSON event parsing, token extraction, process-group kill. |
 | `packages/utils/src/paths.ts` | `resolvePiMindDir` — git-common-dir aware. |
-| `packages/core/lib/schema.ts` | Knowledge frontmatter schema (single source of truth). |
-| `packages/core/lib/skill-evolution.ts` | `create_skill` / `update_skill` implementation. |
-| `packages/core/lib/session-archive.ts` | Session archive with host-cwd prefix filtering. |
-| `packages/core/extensions/memory/index.ts` | Memory extension entry; lifecycle hooks (before_agent_start / turn_end / session_compact), remember_this / observe tools. |
-| `packages/core/extensions/memory/core.ts` | Hybrid retrieval pipeline (vector + FTS5 + KG + links). |
-| `packages/core/extensions/memory/knowledge-graph.ts` | KG storage + entity-fact queries. |
+| `packages/memory/lib/schema.ts` | Knowledge frontmatter schema (single source of truth). |
+| `packages/memory/lib/skill-evolution.ts` | `create_skill` / `update_skill` implementation. |
+| `packages/memory/lib/session-archive.ts` | Session archive with host-cwd prefix filtering. |
+| `packages/memory/extensions/memory/index.ts` | Memory extension entry; lifecycle hooks (before_agent_start / turn_end / session_compact), remember_this / observe tools. |
+| `packages/memory/extensions/memory/core.ts` | Hybrid retrieval pipeline (vector + FTS5 + KG + links). |
+| `packages/memory/extensions/memory/knowledge-graph.ts` | KG storage + entity-fact queries. |
 | `packages/bus/extensions/bus/index.ts` | bus extension: session registry, fs.watch inbox, 3 tools, push-trigger via `pi.sendUserMessage`. |
 | `packages/subagent/extensions/subagent/index.ts` | `spawn_subagent` tool — wraps `spawnPi`. |
 | `packages/toolkit/extensions/mcp-bridge/mcp-client.ts` | MCP stdio JSON-RPC client. |
@@ -257,7 +257,7 @@ See [[e2e-before-publish]] memory.
 
 ## Conventions
 
-- **Single source of truth for schemas** — frontmatter via `packages/core/lib/schema.ts`; bus message / inbox schemas inline in `packages/bus/extensions/bus/index.ts`; never duplicate.
+- **Single source of truth for schemas** — frontmatter via `packages/memory/lib/schema.ts`; bus message / inbox schemas inline in `packages/bus/extensions/bus/index.ts`; never duplicate.
 - **File-based coordination** — packages share `.pi-mind/` (memory + bus state); no in-process IPC.
 - **Cron-driven maintenance** — scheduled maintenance runs via OS cron, not in-process timer (pi has no daemon).
 - **Concurrent writes** — `withGroupLock` (proper-lockfile) for filesystem, `busy_timeout = 5000` for SQLite.
@@ -269,9 +269,9 @@ See [[e2e-before-publish]] memory.
 
 ```bash
 npm test                                       # All workspace vitest suites
-npm run test --workspace=packages/core         # Memory tests
+npm run test --workspace=packages/memory         # Memory tests
 npm run test --workspace=packages/bus          # Bus tests
-node packages/core/scripts/knowledge-lint.ts   # Check knowledge/ schema health
+node packages/memory/scripts/knowledge-lint.ts   # Check knowledge/ schema health
 ```
 
 ## Environment Variables

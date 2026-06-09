@@ -26,7 +26,7 @@ import { mkdtempSync, readFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MemoryCore, parseFrontmatter } from "../../../packages/core/dist/extensions/memory/core.js";
+import { MemoryCore, parseFrontmatter } from "../../../packages/memory/dist/extensions/memory/core.js";
 import { seedMemoryFromHistory } from "../seed.js";
 import type { Driver, EvalQuestion } from "../types.js";
 

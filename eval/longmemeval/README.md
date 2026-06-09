@@ -21,7 +21,7 @@ The two tracks are intentionally separate: retrieval says "memory found the righ
 
 ## Run
 
-The workspace's `preeval` script builds the memory extension automatically before each run (the eval loads `packages/core/dist`). Then run:
+The workspace's `preeval` script builds the memory extension automatically before each run (the eval loads `packages/memory/dist`). Then run:
 
 ```bash
 # QA track (default). Internal judge is OPTIONAL — it's a deepseek/any-model

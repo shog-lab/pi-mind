@@ -1,6 +1,6 @@
 # @shog-lab/pi-utils
 
-Internal infrastructure shared by pi-mind packages (pi-mind-core, pi-toolkit, pi-bus, pi-subagent).
+Internal infrastructure shared by pi-mind packages (pi-memory, pi-toolkit, pi-bus, pi-subagent).
 
 ## What's in here
 
@@ -12,7 +12,7 @@ Internal infrastructure shared by pi-mind packages (pi-mind-core, pi-toolkit, pi
 
 ## Why a separate package
 
-pi-mind-core, pi-toolkit, pi-bus, pi-subagent, and the internal pi-eval
+pi-memory, pi-toolkit, pi-bus, pi-subagent, and the internal pi-eval
 harness all drive pi programmatically and need a shared spawn helper +
 path resolver.
 Previously these lived inside the memory package, which forced everyone

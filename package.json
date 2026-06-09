@@ -7,7 +7,7 @@
   "license": "MIT",
   "workspaces": [
     "packages/utils",
-    "packages/core",
+    "packages/memory",
     "packages/toolkit",
     "packages/bus",
     "packages/subagent",

@@ -2,7 +2,7 @@
 
 **Common [pi](https://github.com/earendil-works/pi) extensions — web search and an MCP server bridge.**
 
-A drop-in package adding several commonly-used external tool integrations to any pi setup. Composes naturally with [`pi-mind`](https://github.com/shog-lab/pi-mind/tree/main/packages/core) (memory).
+A drop-in package adding several commonly-used external tool integrations to any pi setup. Composes naturally with [`pi-mind`](https://github.com/shog-lab/pi-mind/tree/main/packages/memory) (memory).
 
 ## Extensions
 

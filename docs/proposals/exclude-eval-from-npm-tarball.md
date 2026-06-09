@@ -1,5 +1,7 @@
 # Proposal: 把 eval/ 排除出 pi-mind-core 的 npm tarball
 
+> **Note (2026-06-09):** `@shog-lab/pi-mind-core` was renamed to `@shog-lab/pi-memory` in 0.14.0; the on-disk path `packages/core/` became `packages/memory/`. The historical references to `pi-mind-core` / `packages/core` in this proposal are kept verbatim because they describe a 0.7.0 incident and the resolution already shipped in 0.7.x. The "renamed to pi-memory" annotation here is the only callout.
+
 **状态:** 已解决(2026-06-08,迁到 root-level private workspace `eval/longmemeval/`)。
 **优先级:** 低。纯发布卫生问题,无功能影响。
 

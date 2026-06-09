@@ -6,15 +6,15 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
-    "preeval": "npm run build --workspace=@shog-lab/pi-mind-core",
+    "preeval": "npm run build --workspace=@shog-lab/pi-memory",
     "eval": "tsx cli.ts",
-    "pretypecheck": "npm run build --workspace=@shog-lab/pi-mind-core",
+    "pretypecheck": "npm run build --workspace=@shog-lab/pi-memory",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "pretest": "npm run build --workspace=@shog-lab/pi-mind-core",
+    "pretest": "npm run build --workspace=@shog-lab/pi-memory",
     "test": "vitest run"
   },
   "dependencies": {
-    "@shog-lab/pi-mind-core": "*",
+    "@shog-lab/pi-memory": "*",
     "@shog-lab/pi-utils": "*"
   },
   "devDependencies": {

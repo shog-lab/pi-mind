@@ -52,7 +52,7 @@ afterEach(() => {
 
 /**
  * Build a fake "package" directory tree that mirrors what an installed
- * @shog-lab/pi-mind-core would have on disk. By default we copy only
+ * @shog-lab/pi-memory would have on disk. By default we copy only
  * bin/init.js \u2014 the test can opt into copying init-lib.js and/or
  * dist/ structure.
  */

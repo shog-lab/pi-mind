@@ -38,7 +38,7 @@ npm i -g @earendil-works/pi-coding-agent
 
 # 2. Add memory + ask-first skills to your repo
 cd ~/my-repo
-npm i -D @shog-lab/pi-mind-core
+npm i -D @shog-lab/pi-memory
 ```
 
 Verify the loop:
@@ -58,7 +58,7 @@ pi
 
 **Main package — install this for the headline features:**
 
-- [`@shog-lab/pi-mind-core`](packages/core/) — persistent memory (FTS5 + vector + KG) and ask-first skill authoring. The one most users want.
+- [`@shog-lab/pi-memory`](packages/memory/) — persistent memory (FTS5 + vector + KG) and ask-first skill authoring. The one most users want.
 
 **Optional add-ons (compose with core, install only what you need):**
 
