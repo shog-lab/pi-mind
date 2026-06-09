@@ -20,6 +20,7 @@ const LINT_SCRIPT = path.resolve(
   __dirname,
   "../scripts/knowledge-lint.ts",
 );
+const TSX_BIN = path.resolve(__dirname, "../../../node_modules/tsx/dist/cli.mjs");
 
 // Dynamic import (avoid embedding implementation paths in static imports)
 const { KnowledgeGraph } = (await import(
@@ -38,7 +39,7 @@ afterEach(() => {
 
 /** Run the lint script and return the captured output + exit code. */
 function runLint(): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync("npx", ["tsx", LINT_SCRIPT, "--dir", tmpDir], {
+  const r = spawnSync(process.execPath, [TSX_BIN, LINT_SCRIPT, "--dir", tmpDir], {
     encoding: "utf-8",
     timeout: 30_000,
   });
@@ -124,7 +125,7 @@ describe("knowledge-lint \u2014 triples parsing", () => {
 // =============================================================================
 
 function runRebuildKg(args: string[]): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync("npx", ["tsx", LINT_SCRIPT, ...args], {
+  const r = spawnSync(process.execPath, [TSX_BIN, LINT_SCRIPT, ...args], {
     encoding: "utf-8",
     timeout: 30_000,
     env: { ...process.env, PI_MIND_DIR: tmpDir },
@@ -398,7 +399,7 @@ function runLintIn(
     if (v === undefined) delete finalEnv[k];
     else finalEnv[k] = v;
   }
-  const r = spawnSync("npx", ["tsx", LINT_SCRIPT, ...args], {
+  const r = spawnSync(process.execPath, [TSX_BIN, LINT_SCRIPT, ...args], {
     cwd,
     env: finalEnv,
     encoding: "utf-8",
