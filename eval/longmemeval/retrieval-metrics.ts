@@ -32,6 +32,15 @@ export interface RetrievalScoreRow {
   category?: string;
   isAbstention: boolean;
   answerSessionIds: string[];
+  /** Per-result file paths in retrieval order, dedup'd (best-score first). */
+  topFilePaths: string[];
+  /** Per-file scores, aligned with topFilePaths. */
+  topScores: number[];
+  /** Per-file source method, aligned with topFilePaths. */
+  topSources: string[];
+  /** SessionId for each entry in topFilePaths (parsed from seed frontmatter). */
+  fileToSessionId: Record<string, string>;
+  /** SessionIds in retrieval order, dedup'd. */
   retrievedSessionIds: string[];
   topKSessions: Record<number, string[]>;
   recallAny: Record<number, number>;
@@ -96,6 +105,10 @@ export function computeRetrievalRows(
       category: typeof meta.category === "string" ? meta.category : undefined,
       isAbstention,
       answerSessionIds: answerIds,
+      topFilePaths: retrieval.topFilePaths,
+      topScores: retrieval.topScores,
+      topSources: retrieval.topSources,
+      fileToSessionId: retrieval.fileToSessionId,
       retrievedSessionIds: retrievedIdsDedup,
       topKSessions,
       recallAny,
@@ -159,7 +172,7 @@ export function rowsToRetrievalOutput(
   rows: RetrievalScoreRow[],
   agg: ReturnType<typeof aggregateRows>,
   meta: { datasetName: string; driverName: string; startedAt: string; finishedAt: string },
-  ks: number[] = DEFAULT_KS,
+  _ks: number[] = DEFAULT_KS,
 ): RetrievalRunOutput {
   return {
     datasetName: meta.datasetName,
@@ -176,11 +189,17 @@ export function rowsToRetrievalOutput(
       questionId: r.questionId,
       category: r.category,
       isAbstention: r.isAbstention,
-      topFilePaths: r.topKSessions[ks[ks.length - 1]] ?? [],
-      topScores: [], // not propagated from rows; see report writer for details
-      topSources: [],
+      // Real audit fields — topFilePaths are the actual retrieved file
+      // paths, topScores the per-hit score, topSources the per-hit
+      // search method. The sessionIds (retrievedSessionIds) come from
+      // parsing the seeded file's frontmatter.
+      topFilePaths: r.topFilePaths,
+      topScores: r.topScores,
+      topSources: r.topSources,
+      fileToSessionId: r.fileToSessionId,
       answerSessionIds: r.answerSessionIds,
       retrievedSessionIds: r.retrievedSessionIds,
+      topKSessions: r.topKSessions,
       durationMs: r.durationMs,
       error: r.error,
     })),

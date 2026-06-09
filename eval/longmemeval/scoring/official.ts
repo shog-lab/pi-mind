@@ -19,8 +19,9 @@
  *   - Captures stdout/stderr
  *   - Parses the "Accuracy:" / per-category lines from stdout into a
  *     structured OfficialScore object
- *   - Copies the upstream `.eval-results-<model>` file into the run dir
- *     so the full output is auditable later
+ *   - Copies the upstream `hypothesis.jsonl.eval-results-<model>` file
+ *     into the run dir as `official-eval-results.json` so the full
+ *     per-question output is auditable later
  *
  * Failure modes (graceful — returns an OfficialScore with null overall
  * and the raw stderr/stdout so the caller can decide what to do):
@@ -32,9 +33,11 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, readdirSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { existsSync, mkdirSync, copyFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { getCachedPath } from "../datasets/longmemeval-download.js";
+import type { LongMemEvalSplit } from "../datasets/longmemeval-download.js";
 import type { OfficialScore } from "../report.js";
 
 export interface OfficialScoringOptions {
@@ -43,7 +46,7 @@ export interface OfficialScoringOptions {
   /** Path to the cloned LongMemEval repo. Default: $LONGMEMEVAL_HOME or ~/LongMemEval. */
   officialRepoPath?: string;
   /** Which split the hypothesis corresponds to. Determines which split JSON to feed the official evaluator. */
-  split: "oracle" | "s" | "m";
+  split: LongMemEvalSplit;
   /** Override the cache dir where the official evaluator reads the split JSON. Default: ~/.cache/pi-mind-eval/longmemeval/. */
   splitCacheDir?: string;
   /** Judge model name (passed verbatim to evaluate_qa.py). */
@@ -53,16 +56,17 @@ export interface OfficialScoringOptions {
 }
 
 const DEFAULT_OFFICIAL_REPO = join(homedir(), "LongMemEval");
-const DEFAULT_SPLIT_CACHE = join(homedir(), ".cache", "pi-mind-eval", "longmemeval");
-
 export function runOfficialScoring(opts: OfficialScoringOptions): OfficialScore {
   const repoPath = resolve(opts.officialRepoPath ?? process.env.LONGMEMEVAL_HOME ?? DEFAULT_OFFICIAL_REPO);
-  const splitCache = resolve(opts.splitCacheDir ?? process.env.LONGMEMEVAL_CACHE_DIR ?? DEFAULT_SPLIT_CACHE);
   const python = opts.pythonBin ?? "python3";
   const evaluator = join(repoPath, "src", "evaluation", "evaluate_qa.py");
   const hypothesisPath = join(opts.runDir, "hypothesis.jsonl");
-  const splitJsonPath = join(splitCache, `longmemeval_${opts.split}.json`);
-
+  // getCachedPath() is the single source of truth for the split → filename
+  // mapping (longmemeval_oracle.json / longmemeval_s_cleaned.json /
+  // longmemeval_m_cleaned.json). It honors LONGMEMEVAL_CACHE_DIR too.
+  const splitJsonPath = opts.splitCacheDir
+    ? resolve(opts.splitCacheDir, basename(getCachedPath(opts.split)))
+    : getCachedPath(opts.split);
   // Graceful pre-checks
   const reasons: string[] = [];
   if (!existsSync(hypothesisPath)) reasons.push(`hypothesis.jsonl not found at ${hypothesisPath}`);
@@ -104,27 +108,18 @@ export function runOfficialScoring(opts: OfficialScoringOptions): OfficialScore 
   const stderr = result.stderr ?? "";
   const exitOk = result.status === 0;
 
-  // Copy the .eval-results-<model> file the official script writes next
-  // to hypothesis.jsonl into the run dir, so the full per-question output
-  // is auditable later.
+  // The official evaluator writes the per-question results to
+  // `<hypothesis_path>.eval-results-<model>` (NOT `.eval-results-<model>`
+  // next to it). Copy that into <run>/official-eval-results.json so
+  // downstream tooling can find the raw output by a stable name.
   let evalResultsFile: string | null = null;
-  const sourceResults = join(opts.runDir, `.eval-results-${opts.judgeModel}`);
-  if (existsSync(sourceResults)) {
+  const upstreamResult = `${hypothesisPath}.eval-results-${opts.judgeModel}`;
+  if (existsSync(upstreamResult)) {
     const dest = join(opts.runDir, "official-eval-results.json");
     try {
-      copyFileSync(sourceResults, dest);
+      copyFileSync(upstreamResult, dest);
       evalResultsFile = dest;
     } catch { /* non-fatal */ }
-  } else {
-    // Upstream writes the file in cwd (the repo). Also try there.
-    const fromRepo = join(repoPath, `.eval-results-${opts.judgeModel}`);
-    if (existsSync(fromRepo)) {
-      const dest = join(opts.runDir, "official-eval-results.json");
-      try {
-        copyFileSync(fromRepo, dest);
-        evalResultsFile = dest;
-      } catch { /* non-fatal */ }
-    }
   }
 
   const parsed = exitOk ? parseOfficialStdout(stdout) : { overall: null, perCategory: {} };
@@ -152,6 +147,12 @@ export function runOfficialScoring(opts: OfficialScoringOptions): OfficialScore 
   };
 }
 
+/** Last path component, platform-agnostic (avoids `node:path` import bloat). */
+function basename(p: string): string {
+  const idx = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return idx >= 0 ? p.slice(idx + 1) : p;
+}
+
 /** Write a sibling official-score.json from the parsed + captured data. */
 function writeOfficialScoreJson(runDir: string, summary: {
   model: string;
@@ -170,39 +171,50 @@ function writeOfficialScoreJson(runDir: string, summary: {
   } catch { /* non-fatal */ }
 }
 
+/** Write the raw result file. Exposed for tests that don't want to spawn Python. */
+export function findOfficialResultFile(hypothesisPath: string, model: string): string {
+  return `${hypothesisPath}.eval-results-${model}`;
+}
+
 /**
  * Parse the official LongMemEval evaluator's stdout.
  *
- * The exact line shapes change across upstream versions. The most
- * stable forms we've observed:
+ * Observed formats (LongMemEval main, last synced 2026-06-09):
  *   "Accuracy: 0.612"
- *   "<category_name>: 0.612"
  *   "Overall accuracy: 0.612"
+ *   "\ttemporal-reasoning: 0.25 (2)"   ← tab-indented, trailing count
+ *   "single-session-user: 0.5 (1)"     ← unindented, trailing count
  *
- * We try a few regexes and return what we find. If the upstream format
- * changes, the perCategory / overall may be null — the rawStdout /
- * stderrTail fields in `official-score.json` preserve the literal text
- * for re-parsing.
+ * Earlier pass required lines to END with the float, which dropped
+ * per-category lines with a trailing `(<count>)`. Relaxed to allow
+ * trailing content after the float.
  */
-function parseOfficialStdout(stdout: string): { overall: number | null; perCategory: Record<string, number> } {
+export function parseOfficialStdout(stdout: string): { overall: number | null; perCategory: Record<string, number> } {
   const perCategory: Record<string, number> = {};
   let overall: number | null = null;
 
-  // Look for "Accuracy: 0.612" or "Overall accuracy: 0.612" anywhere.
-  const overallRe = /(?:overall\s+)?accuracy\s*[:=]\s*([0-9.]+)/i;
+  // Overall: "Accuracy: 0.612" or "Overall accuracy: 0.612" anywhere on a line.
+  // Match the FIRST one (so per-category "X: 0.612" lines that happen to
+  // be labeled "accuracy" don't accidentally override).
+  const overallRe = /(?:^|\n)\s*(?:overall\s+)?accuracy\s*[:=]\s*([0-9.]+)/i;
   for (const line of stdout.split(/\r?\n/)) {
     const m = line.match(overallRe);
-    if (m) overall = Number(m[1]);
+    if (m) { overall = Number(m[1]); break; }
   }
 
-  // Per-category: lines that look like "<word>: <float>" (no spaces in
-  // the word — LongMemEval uses underscores for multi-word categories).
-  const catRe = /^([a-z0-9_-]+)\s*[:=]\s*([0-9.]+)\s*$/i;
+  // Per-category: a line whose first non-whitespace token is a category
+  // (lowercase letters / digits / underscore) followed by ": <float>",
+  // allowing optional trailing content (count, units, etc.).
+  const catRe = /^\s*([a-z][a-z0-9_-]*)\s*[:=]\s*([0-9.]+)/i;
   for (const line of stdout.split(/\r?\n/)) {
     const m = line.match(catRe);
     if (!m) continue;
     const cat = m[1].toLowerCase();
-    if (cat === "accuracy" || cat === "overall") continue;
+    if (cat === "accuracy" || cat === "overall" || cat === "total") continue;
+    // First occurrence wins; later lines for the same category are
+    // ignored (defensive: the upstream occasionally prints both a
+    // raw float and a "X (N)" version on separate lines).
+    if (cat in perCategory) continue;
     perCategory[cat] = Number(m[2]);
   }
   return { overall, perCategory };

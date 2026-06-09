@@ -131,8 +131,9 @@ export function writeRetrievalReportMd(path: string, output: RetrievalRunOutput)
   lines.push("## Overall");
   lines.push("");
   const kHeaders = ks.map((k) => `@${k}`).join(" | ");
+  const metricCols = ["---", ...ks.map(() => "---")];
   lines.push(`| Metric | ${kHeaders} |`);
-  lines.push(`|---|---|${ks.map(() => "---|").join("")}`);
+  lines.push("|" + metricCols.join("|") + "|");
   lines.push(`| RecallAny | ${ks.map((k) => `${(output.recallAny[k] * 100).toFixed(1)}%`).join(" | ")} |`);
   lines.push(`| NDCG      | ${ks.map((k) => `${(output.ndcg[k] * 100).toFixed(1)}%`).join(" | ")} |`);
   lines.push("");
@@ -140,8 +141,12 @@ export function writeRetrievalReportMd(path: string, output: RetrievalRunOutput)
   if (Object.keys(output.perCategory).length > 0) {
     lines.push("## Per category");
     lines.push("");
-    lines.push(`| Category | Scored / Total | ${ks.map((k) => `R@${k}`).join(" | ")} | ${ks.map((k) => `NDCG@${k}`).join(" | ")} |`);
-    lines.push(`|---|---|${ks.map(() => "---|").join("")}${ks.map(() => "---|").join("")}`);
+    // 4 columns: Category | Scored/Total | R@ks | NDCG@ks. Separator needs 3 middle pipes.
+    const catHeader = `| Category | Scored / Total | ${ks.map((k) => `R@${k}`).join(" | ")} | ${ks.map((k) => `NDCG@${k}`).join(" | ")} |`;
+    const catCols = ["---", "---", ...ks.map(() => "---"), ...ks.map(() => "---")];
+    const catSep = "|" + catCols.join("|") + "|";
+    lines.push(catHeader);
+    lines.push(catSep);
     for (const [cat, s] of Object.entries(output.perCategory)) {
       const rLine = ks.map((k) => `${(s.recallAny[k] * 100).toFixed(1)}%`).join(" | ");
       const nLine = ks.map((k) => `${(s.ndcg[k] * 100).toFixed(1)}%`).join(" | ");

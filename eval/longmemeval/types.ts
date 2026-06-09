@@ -1,16 +1,24 @@
 /**
  * Core types for the eval harness.
  *
- * NOTE: scoring is intentionally NOT part of this codebase anymore.
- * The previous custom judge was wrong (didn't match LongMemEval's official
- * evaluator). The plan is to:
- *   1. Use this harness to spawn pi and collect responses
- *   2. Export responses as a hypothesis file in LongMemEval's expected format
- *   3. Feed that file into LongMemEval's official Python evaluator
- *      (src/evaluation/evaluate_qa.py) for scoring
+ * Two scoring paths exist for the QA track:
+ *   1. Internal judge (scoring/longmemeval-judge.ts): a verbatim port of
+ *      LongMemEval's `get_anscheck_prompt`. Use `--judge` to enable.
+ *      Fast, model-flexible (any model the test response can use), but
+ *      NOT LongMemEval-citable — internal iteration only.
+ *   2. Official evaluator wrapper (scoring/official.ts): spawns the
+ *      upstream `src/evaluation/evaluate_qa.py` as a subprocess.
+ *      Source of truth for QA accuracy. Use `--score-official` to
+ *      enable. Requires the LongMemEval repo cloned locally.
  *
- * So the pipeline here is: Dataset → Driver → HypothesisFile.
- * Scoring happens out-of-process via the official evaluator.
+ * The pipeline here is:
+ *   Dataset → Driver → HypothesisFile → (optional) Judge → RunOutput
+ *                                                 ↓ (optional) score-official
+ *                                                 official-score.json
+ *
+ * Retrieval track (--track retrieval) is separate: Dataset →
+ * RetrievalOnlyDriver → topFilePaths + retrievedSessionIds → metrics.
+ * No pi spawn, no model cost. Measures memory's recall, not QA accuracy.
  */
 
 import type { PiTokens } from "@shog-lab/pi-utils";
@@ -118,11 +126,18 @@ export interface RetrievalRunOutput {
     questionId: string;
     category?: string;
     isAbstention: boolean;
+    /** Real audit fields: top retrieved file paths, scores, source method. */
     topFilePaths: string[];
     topScores: number[];
     topSources: string[];
-    answerSessionIds: string[];
+    /** Mapping from each topFilePath to its sessionId (from seed frontmatter). */
+    fileToSessionId: Record<string, string>;
+    /** Retrieved sessionIds in retrieval order (dedup'd, best first). */
     retrievedSessionIds: string[];
+    /** Per-K sessionIds (subset of retrievedSessionIds). */
+    topKSessions: Record<number, string[]>;
+    /** Ground truth for the question. Empty for abstention. */
+    answerSessionIds: string[];
     durationMs: number;
     error?: string;
   }>;

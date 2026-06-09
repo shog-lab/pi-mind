@@ -21,12 +21,9 @@ The two tracks are intentionally separate: retrieval says "memory found the righ
 
 ## Run
 
-Build the memory extension first, then:
+The workspace's `preeval` script builds the memory extension automatically before each run (the eval loads `packages/core/dist`). Then run:
 
 ```bash
-# Build the memory extension once (its dist is what the eval loads)
-npm run build --workspace=@shog-lab/pi-mind-core
-
 # QA track (default). Internal judge is OPTIONAL — it's a deepseek/any-model
 # port of LongMemEval's `get_anscheck_prompt` and is NOT LongMemEval-citable.
 npm run eval:longmemeval -- --split oracle --limit 10 --out /tmp/eval-qa

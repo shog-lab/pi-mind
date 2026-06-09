@@ -6,8 +6,11 @@
   "type": "module",
   "license": "UNLICENSED",
   "scripts": {
+    "preeval": "npm run build --workspace=@shog-lab/pi-mind-core",
     "eval": "tsx cli.ts",
+    "pretypecheck": "npm run build --workspace=@shog-lab/pi-mind-core",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "pretest": "npm run build --workspace=@shog-lab/pi-mind-core",
     "test": "vitest run"
   },
   "dependencies": {

@@ -26,7 +26,7 @@ import { mkdtempSync, readFileSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MemoryCore, parseFrontmatter } from "@shog-lab/pi-mind-core/dist/extensions/memory/core.js";
+import { MemoryCore, parseFrontmatter } from "../../../packages/core/dist/extensions/memory/core.js";
 import { seedMemoryFromHistory } from "../seed.js";
 import type { Driver, EvalQuestion } from "../types.js";
 
@@ -117,7 +117,7 @@ export class RetrievalOnlyDriver implements Driver {
           mc.searchFTS5(question.question),
           mc.searchVector(question.question),
         ]);
-        const merged = mc.mergeHybridResults(ftsHits, vecHits);
+        const merged = mc.mergeHybridResults(vecHits, ftsHits);
         // KG block: file paths that appear in the KG render path. Cheap
         // because the KG is small at the eval scale.
         const kg = await kgEntityFilePaths(mc, question.question);
