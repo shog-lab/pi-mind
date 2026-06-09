@@ -58,6 +58,12 @@ export interface EvalResult {
   judgeReply?: string;
   /** Tokens spent by the judge call (separate from test response tokens). */
   judgeTokens?: PiTokens;
+  /**
+   * Structured retrieval data, populated by the RetrievalOnlyDriver.
+   * Lets the same harness infrastructure (one RunOutput per run) carry
+   * both QA responses and retrieval metrics.
+   */
+  retrieval?: import("./drivers/retrieval.js").RetrievalResult;
 }
 
 /** Driver: runs one question against a real (or fake) memory backend. */
@@ -83,5 +89,63 @@ export interface RunOutput {
   meanScore?: number;
   /** Per question_type breakdown of mean score + count. */
   perCategory?: Record<string, { count: number; meanScore: number }>;
+  /**
+   * "qa" (default; pi-session driver) or "retrieval" (RetrievalOnlyDriver).
+   * Determines which writers should run.
+   */
+  track?: "qa" | "retrieval";
   results: EvalResult[];
+}
+
+/** Aggregated retrieval-only output. */
+export interface RetrievalRunOutput {
+  datasetName: string;
+  driverName: string;
+  startedAt: string;
+  finishedAt: string;
+  totalQuestions: number;
+  abstentionCount: number;
+  scoredQuestionCount: number;     // totalQuestions - abstentionCount
+  recallAny: Record<number, number>; // K -> recall@k (0..1), only over scored questions
+  ndcg: Record<number, number>;
+  perCategory: Record<string, {
+    count: number;
+    scoredCount: number;
+    recallAny: Record<number, number>;
+    ndcg: Record<number, number>;
+  }>;
+  results: Array<{
+    questionId: string;
+    category?: string;
+    isAbstention: boolean;
+    topFilePaths: string[];
+    topScores: number[];
+    topSources: string[];
+    answerSessionIds: string[];
+    retrievedSessionIds: string[];
+    durationMs: number;
+    error?: string;
+  }>;
+}
+
+/**
+ * Per-run reproducibility metadata. Always written to <out>/manifest.json
+ * so a future reader can replay a run end-to-end.
+ */
+export interface RunManifest {
+  timestamp: string;          // ISO, generated at run end
+  gitSha: string;             // HEAD; "unknown" if not a git checkout
+  workspaceName: string;      // "@shog-lab/pi-mind-eval"
+  workspaceVersion: string;   // from package.json
+  nodeVersion: string;
+  track: "qa" | "retrieval";
+  dataset: string;            // e.g. "longmemeval-oracle"
+  split: string;              // "oracle" | "s" | "m"
+  limit?: number;
+  category?: string;
+  concurrency: number;
+  driver: string;
+  judgeModel: string | null;
+  officialScoreModel: string | null;
+  command: string[];          // argv tail
 }

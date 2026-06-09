@@ -15,12 +15,13 @@
  * we should compare both ingestion modes on a sample to validate this.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnPi, type PiTokens } from "@shog-lab/pi-utils";
 import type { Driver, EvalQuestion } from "../types.js";
+import { seedMemoryFromHistory } from "../seed.js";
 
 export interface PiSessionDriverOptions {
   /** Extra args passed to pi (e.g. ["--model", "openai/gpt-4o-mini"]) */
@@ -116,82 +117,4 @@ export class PiSessionDriver implements Driver {
     }
     this.tmpDirs = [];
   }
-}
-
-/**
- * Seed memory by writing each logical session as one knowledge .md file under
- * `<piMindDir>/knowledge/`.
- *
- * Why this shape: memory's `before_agent_start` hook only injects L1 entries
- * (always-on preferences) and the top-K L2/L3 search hits — it does NOT load
- * raw session files directly. So if we only wrote raw/sessions/*.jsonl, pi
- * would start with empty memory context. By emitting knowledge files with
- * tier=L2 and type=reference, memory's syncIndex will register them in FTS5
- * on first run and the search path will retrieve the relevant ones when the
- * question is asked.
- *
- * Subject choice: `reference` because:
- *   - `user`     → L1 always-injected, would dump entire history into context
- *   - `project`  → semantically wrong (this isn't project info)
- *   - `agent-feedback` → semantically wrong
- *   - `reference` → fits "external knowledge for retrieval"; tests the actual
- *                   FTS+KG search path, which is what LongMemEval measures
- *
- * Tradeoff: we skip the compaction/summarization step that production memory
- * runs before storing knowledge — full session text becomes the body. This
- * tests memory's retrieval over raw text, not over summarized facts. To compare
- * "raw vs summarized" body, swap formatSessionBody() for a summarizer.
- */
-function seedMemoryFromHistory(piMindDir: string, question: EvalQuestion): void {
-  const knowledgeDir = join(piMindDir, "knowledge");
-  mkdirSync(knowledgeDir, { recursive: true });
-
-  // Group history by sessionId; preserve insertion order within each session.
-  const buckets = new Map<string, typeof question.history>();
-  for (const msg of question.history) {
-    const key = msg.sessionId ?? `eval-${question.id}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key)!.push(msg);
-  }
-
-  for (const [sessionId, msgs] of buckets) {
-    const sessionDate = msgs[0]?.timestamp ?? new Date().toISOString();
-    const body = formatSessionBody(msgs);
-    const frontmatter = [
-      "---",
-      `date: ${normalizeDate(sessionDate)}`,
-      `type: reference`,
-      `tier: L2`,
-      `tags: [eval, session-${sessionId}]`,
-      "---",
-      "",
-      body,
-    ].join("\n");
-
-    const fileName = `eval-${sessionId}.md`;
-    writeFileSync(join(knowledgeDir, fileName), frontmatter, "utf-8");
-  }
-}
-
-function formatSessionBody(msgs: { role: string; content: string }[]): string {
-  const lines: string[] = [];
-  for (const m of msgs) {
-    lines.push(`**${m.role}:** ${m.content}`);
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-
-/**
- * LongMemEval timestamps look like "2023/04/10 (Mon) 14:47" — normalize to
- * ISO so memory's frontmatter validator and date-based heuristics don't choke.
- */
-function normalizeDate(raw: string): string {
-  // Already ISO? pass through.
-  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw;
-  // LongMemEval format: "YYYY/MM/DD (Day) HH:MM"
-  const m = raw.match(/^(\d{4})\/(\d{2})\/(\d{2})/);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  // Fallback: today's date — better than crashing
-  return new Date().toISOString().slice(0, 10);
 }

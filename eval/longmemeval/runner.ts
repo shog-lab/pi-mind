@@ -10,6 +10,7 @@
 import type { Dataset, Driver, EvalQuestion, EvalResult, RunOutput } from "./types.js";
 import type { JudgeOptions } from "./scoring/longmemeval-judge.js";
 import { judgeQuestion } from "./scoring/longmemeval-judge.js";
+import type { PiTokens } from "@shog-lab/pi-utils";
 
 export interface RunEvalOptions {
   dataset: Dataset;
@@ -47,7 +48,12 @@ export async function runEval(opts: RunEvalOptions): Promise<RunOutput> {
 
       let result: EvalResult;
       try {
-        const { response, tokens, durationMs } = await opts.driver.run(question);
+        const { response, tokens, durationMs, retrieval } = await opts.driver.run(question) as {
+          response: string;
+          tokens?: PiTokens;
+          durationMs: number;
+          retrieval?: import("./drivers/retrieval.js").RetrievalResult;
+        };
         result = {
           questionId: question.id,
           response,
@@ -55,6 +61,7 @@ export async function runEval(opts: RunEvalOptions): Promise<RunOutput> {
           durationMs,
           metadata: question.metadata,
         };
+        if (retrieval) result.retrieval = retrieval;
 
         if (opts.judge) {
           try {

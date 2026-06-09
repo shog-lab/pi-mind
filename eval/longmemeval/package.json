@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@shog-lab/pi-mind-core": "*",
     "@shog-lab/pi-utils": "*"
   },
   "devDependencies": {

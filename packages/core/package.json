@@ -4,6 +4,10 @@
   "description": "Give pi a mind: portable, self-maintaining memory for pi-coding-agent. Memory is passive — writes are explicit (remember_this / observe), retrieval is hybrid (vector + FTS5 + KG). Ships ask-first skill authoring (create_skill / update_skill).",
   "type": "module",
   "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json",
+    "./dist/*": "./dist/*"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shog-lab/pi-mind.git",
