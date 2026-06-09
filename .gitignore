@@ -21,7 +21,10 @@ node_modules/
 .claude/
 .cursor/
 .vscode/
-personas/
+
+# personas/ is NOT in this block — it's the repo-local operational contract
+# (Alice/Bob/Carol prompt sources + bin/start.sh + permissions matrix) and is
+# tracked. See personas/README.md.
 
 # Long-form drafts — kept local, not version-controlled
 posts/
