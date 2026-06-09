@@ -30,11 +30,12 @@ prompts.
 | Edit files in working tree | ✓ | ✓ _(on Alice's task)_ | ✗ _(see note 1)_ | ✓ |
 | Delete files (`rm`, `git rm`) | △ | ✗ | ✗ | ✓ |
 | `git commit` to `main` | ✓ | ✓ _(on Alice's task)_ | ✗ | ✓ |
-| `git push` to `origin` | ✗ | ✗ | ✗ | ✓ |
+| `git push` to `origin` | △ _(after user ack)_ | ✗ | ✗ | ✓ |
 | `remember_this` / `observe` _(memory writes)_ | ✓ | ✗ _(hard-excluded)_ | ✗ _(hard-excluded)_ | ✓ _(via Alice)_ |
-| `create_skill` / `update_skill` | △ _(propose only — see note 2)_ | ✗ | ✗ | ✓ _(mandatory ask-first)_ |
-| `npm publish` | ✗ | ✗ | ✗ | ✓ |
-| `npm deprecate` | ✗ | ✗ | ✗ | ✓ |
+| `update_memory` / `mark_memory_audit_complete` | △ _(user ack for destructive/semantic updates)_ | ✗ _(hard-excluded)_ | ✗ _(hard-excluded)_ | ✓ _(via Alice)_ |
+| `create_skill` / `update_skill` | △ _(propose only — see note 2)_ | ✗ _(hard-excluded)_ | ✗ _(hard-excluded)_ | ✓ _(mandatory ask-first)_ |
+| `npm publish` | △ _(after user ack)_ | ✗ | ✗ | ✓ |
+| `npm deprecate` | △ _(after user ack)_ | ✗ | ✗ | ✓ |
 | Full LongMemEval run (cost-bearing) | △ _(propose → user)_ | △ _(propose → Alice → user)_ | △ _(review only, propose → user)_ | ✓ |
 | Model swap / context-budget overrides | △ _(propose → user)_ | ✗ | ✗ | ✓ |
 
@@ -52,18 +53,23 @@ fires after the user says yes in the visible turn. This is the
 
 ## Escalation rules
 
-1. **Destructive ops (delete, push, publish, deprecate):** never do them.
-   Propose the exact command in chat, wait for the user to ack, then run.
+1. **Destructive / externally-visible ops (delete, push, publish, deprecate):**
+   Alice proposes the exact command or action in chat, waits for the user to ack,
+   then may execute it. Bob/Carol never execute these.
 2. **Cross-cutting refactors (rename, schema change, public API change):**
    Alice plans in `docs/proposals/<name>.md`, waits for user ack, then
    dispatches implementation. Bob executes the agreed plan; deviating
    mid-task requires Alice retasking.
-3. **Unclear scope:** Bob/Carol ask Alice. Alice asks the user. Never
+3. **Throughput split:** Alice may directly execute low-risk, tightly-scoped
+   changes (README/metadata/typo/config/small grep replacement). Larger or
+   riskier execution work goes to Bob; high-risk plans can go to Carol for
+   pre-review before Bob starts.
+4. **Unclear scope:** Bob/Carol ask Alice. Alice asks the user. Never
    "do what seems right" on ambiguous tasks.
-4. **User override:** the user can grant any persona a one-shot exception
+5. **User override:** the user can grant any persona a one-shot exception
    ("Bob, go ahead and publish 0.14.1"). Record it in the chat, then
    execute; the rule is back in force after that turn.
-5. **Carol disagreeing with Alice's verdict:** Carol does not escalate
+6. **Carol disagreeing with Alice's verdict:** Carol does not escalate
    past Alice. If Carol thinks Alice is wrong, Carol writes a
    CONDITIONAL or BLOCK verdict with explicit evidence and lets Alice
    forward to the user. Carol never `agent_send`s the user directly.

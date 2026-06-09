@@ -44,8 +44,8 @@ personas/
 3. `cd` 到 repo root
 4. 设置 `PI_AGENT_NAME=<persona>` — **只在调用方未预先 export 时设置**
 5. `exec pi --append-system-prompt <persona.md> [persona-specific excludes] [extra args...]`
-6. 对于 bob/carol, 强制 `--exclude-tools remember_this,observe`
-   (memory-write 工具只能 Alice 用; 这是设计, 不是 bug)
+6. 对于 bob/carol, 强制 `--exclude-tools remember_this,observe,update_memory,mark_memory_audit_complete,create_skill,update_skill`
+   (记忆写入 / skill 演化工具只能 Alice 在用户 gate 下使用; 这是设计, 不是 bug)
 
 `start.sh` **不硬编码 model**——传 `--model` 即可,或设置 pi 自己的环境变量。
 
@@ -83,6 +83,16 @@ User (最终决定权)
   产出 verdict: PASS / CONDITIONAL / BLOCK, 附 Blocking / Non-blocking /
   Evidence / Commands Reviewed / Recommendation。
 
+## 吞吐量优化规则
+
+这套 personas 不是为了让 Alice 永远等 Bob。默认优化如下:
+
+- **低风险小改 Alice 直接做**: README/metadata/typo/config 这类 5 分钟内可完成、验收明确、低风险的改动, Alice 可以直接编辑、自测、汇报用户, 不必排队给 Bob。
+- **执行重活给 Bob**: 涉及多文件实现、测试修复、重构、迁移、较长 grep 清理的任务仍派 Bob。
+- **高风险任务先让 Carol 方案复审**: rename、publish、eval methodology、权限/persona 设计、公共 API/schema 变化, Alice 可以先让 Carol challenge 方案, 再派 Bob 执行。
+- **长任务 checkpoint 化**: Bob 预计超过 10–15 分钟或跨多个子系统时, Alice 派活时要求阶段性 checkpoint(commit 或明确状态), 避免一次大包失败。
+- **Alice 派活后不空等**: 派给 Bob 后, Alice 可以并行准备审查 checklist、grep 影响面、写 E2E probe 草稿、或让 Carol 做只读预审。
+
 ## 现在**不做**什么
 
 本目录刻意保持简单。当前不做:
@@ -103,7 +113,6 @@ User (最终决定权)
 - 改权限边界 / 升级预算 → 改 `permissions.md`, 在 commit message 里说清楚
 - 改协作流程 / 层级 → 改这里和 `AGENTS.md`
 
-`personas/` 目录本身在 `.gitignore` 里的旧条目下被视为 "per-developer,
-not project state"——本次任务正在把它升级为项目状态的一部分(详见
-对应 commit)。如果你从这台机器拉走 repo 后看不到这个目录, 那就是
-gitignore / git add 出了问题, 报给 Alice。
+`personas/` 是版本化的项目状态, 不再是 `.gitignore` 下的 per-developer
+scratch。如果你从新 clone 拉走 repo 后看不到这个目录, 那就是 gitignore /
+git add 出了问题, 报给 Alice。

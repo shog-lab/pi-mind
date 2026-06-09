@@ -279,7 +279,7 @@ node packages/memory/scripts/knowledge-lint.ts   # Check knowledge/ schema healt
 Three persona pi sessions — **Alice** (planner / dispatcher / reviewer / writer / memory lead), **Bob** (implementer), **Carol** (independent reviewer / methodology auditor) — operate this repo. The canonical prompt sources, the unified launcher, and the permissions matrix live in [`personas/`](personas/):
 
 - `personas/prompts/{alice,bob,carol}.md` — the persona prompt sources that `bin/start.sh` loads via `--append-system-prompt`
-- `personas/bin/start.sh alice|bob|carol [extra pi args...]` — the unified entry point; resolves repo root, sets `PI_AGENT_NAME`, and enforces hard tool excludes for bob/carol
+- `personas/bin/start.sh alice|bob|carol [extra pi args...]` — the unified entry point; resolves repo root, sets `PI_AGENT_NAME`, and enforces hard state-changing tool excludes for bob/carol
 - `personas/permissions.md` — read/propose/execute/approve matrix, escalation rules, context/cost budget (Bob/Carol default 512K)
 
 Hierarchy: `user > Alice > Bob / Carol`. Bob and Carol may exchange facts/evidence/test output directly; task dispatch, plan changes, merge/release decisions all flow through Alice and ultimately the user. This is the operationalization of the Design Principles above — not a separate authority.

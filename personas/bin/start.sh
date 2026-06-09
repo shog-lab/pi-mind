@@ -14,9 +14,10 @@
 #      already set it (so an explicit env var wins).
 #   4. Invokes `pi` with `--append-system-prompt <persona.md>` so the
 #      runtime persona instructions are injected.
-#   5. For bob/carol, also enforces `--exclude-tools remember_this,observe`
-#      (memory-write tools are Alice-only — the prompt says so, but a weak
-#      model may ignore prose; this makes it impossible, not just discouraged).
+#   5. For bob/carol, also enforces `--exclude-tools` for memory-write and
+#      skill-evolution tools (those are Alice/user-gated — the prompt says so,
+#      but a weak model may ignore prose; this makes it impossible, not just
+#      discouraged).
 #   6. Does NOT hardcode a model. Pass `--model ...` after the persona arg
 #      (or set PI_MODEL) and pi will use it.
 #
@@ -74,10 +75,10 @@ PI_ARGS=(--append-system-prompt "$PROMPT_FILE")
 
 case "$PERSONA" in
   bob|carol)
-    # HARD constraint: exclude memory-write tools. Centralized on Alice.
+    # HARD constraint: exclude memory-write and skill-evolution tools.
     # `recall_memory` (READ) and `agent_send` (report) are intentionally
-    # NOT excluded — only the WRITE side is locked down.
-    PI_ARGS+=(--exclude-tools remember_this,observe)
+    # NOT excluded — only state-changing tools are locked down.
+    PI_ARGS+=(--exclude-tools remember_this,observe,update_memory,mark_memory_audit_complete,create_skill,update_skill)
     ;;
 esac
 
