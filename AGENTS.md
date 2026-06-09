@@ -14,7 +14,7 @@ Guide for AI agents working in this repository.
 | `packages/bus` | `@shog-lab/pi-bus` | published | Inter-pi messaging primitive. 3 tools, per-repo auto-discovery, push-trigger via `pi.sendUserMessage`. |
 | `packages/subagent` | `@shog-lab/pi-subagent` | published | Single `spawn_subagent` tool — fire-and-forget child pi via spawnPi. Extracted from pi-toolkit 0.3.0. |
 
-LongMemEval benchmark harness lives at `eval/longmemeval/` as a private top-level workspace (moved from `packages/memory/eval/` on 2026-06-08; was its own workspace `packages/eval/` through 2026-05-26). Internal benchmark tooling for pi-mind memory horizontal/vertical comparisons; not published. Build the memory package first, then run with `npm run eval:longmemeval -- <args>`.
+LongMemEval benchmark harness lives at `eval/longmemeval/` as a private top-level workspace (moved from `packages/core/eval/` on 2026-06-08, before the core package was renamed to `packages/memory/`; was its own workspace `packages/eval/` through 2026-05-26). Internal benchmark tooling for pi-mind memory horizontal/vertical comparisons; not published. Build the memory package first, then run with `npm run eval:longmemeval -- <args>`.
 
 `@shog-lab/pi-goals` (ralph) was published through 0.5.1 then **deprecated + removed from the monorepo on 2026-05-28** (see Design Principles below). Published versions remain installable from npm with a deprecation warning; pin `@shog-lab/pi-goals@0.5.1` if you depend on the old behavior.
 
