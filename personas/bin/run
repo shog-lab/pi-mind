@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Internal helper. User-facing entrypoints are personas/bin/alice|bob|carol.
-# Usage: run <persona> <model> <exclude-tools> <no-skills-flag> [extra pi args...]
+# Usage: run <persona> <model> <thinking> <exclude-tools> <no-skills-flag> [extra pi args...]
 
 set -euo pipefail
 
-if [[ $# -lt 4 ]]; then
-  echo "Usage: $0 <persona> <model> <exclude-tools> <no-skills-flag> [extra pi args...]" >&2
+if [[ $# -lt 5 ]]; then
+  echo "Usage: $0 <persona> <model> <thinking> <exclude-tools> <no-skills-flag> [extra pi args...]" >&2
   exit 2
 fi
 
 PERSONA="$1"
 MODEL="$2"
-EXCLUDE_TOOLS="$3"
-NO_SKILLS="$4"
-shift 4
+THINKING="$3"
+EXCLUDE_TOOLS="$4"
+NO_SKILLS="$5"
+shift 5
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -31,6 +32,10 @@ PI_ARGS=(--append-system-prompt "$PROMPT_FILE")
 
 if [[ -n "$MODEL" ]]; then
   PI_ARGS+=(--model "$MODEL")
+fi
+
+if [[ -n "$THINKING" ]]; then
+  PI_ARGS+=(--thinking "$THINKING")
 fi
 
 if [[ -n "$EXCLUDE_TOOLS" ]]; then

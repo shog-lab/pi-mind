@@ -18,11 +18,11 @@ That's the normal path. You should not need to remember prompt paths, model name
 
 ## Defaults
 
-| Persona | Launcher | Default model | Notes |
-|---|---|---|---|
-| Alice | `./personas/bin/alice` | `deepseek/deepseek-v4-pro` | planner / dispatcher / reviewer / writer / memory lead |
-| Bob | `./personas/bin/bob` | `minimax-cn/MiniMax-M3` | implementer; memory/skill write tools disabled |
-| Carol | `./personas/bin/carol` | `deepseek/deepseek-v4-pro` | independent reviewer; memory/skill write tools disabled |
+| Persona | Launcher | Default model | Default thinking | Notes |
+|---|---|---|---|---|
+| Alice | `./personas/bin/alice` | `deepseek/deepseek-v4-pro` | `high` | planner / dispatcher / reviewer / writer / memory lead |
+| Bob | `./personas/bin/bob` | `minimax-cn/MiniMax-M3` | `medium` | implementer; memory/skill write tools disabled |
+| Carol | `./personas/bin/carol` | `deepseek/deepseek-v4-pro` | `high` | independent reviewer; memory/skill write tools disabled |
 
 Bob and Carol always start with these state-changing tools disabled:
 
@@ -32,12 +32,14 @@ remember_this,observe,update_memory,mark_memory_audit_complete,create_skill,upda
 
 ## Overrides
 
-Temporary model override:
+Temporary model / thinking override:
 
 ```bash
 BOB_MODEL=deepseek/deepseek-v4-pro ./personas/bin/bob
-# or pass pi args directly; later --model wins
-./personas/bin/bob --model deepseek/deepseek-v4-pro
+BOB_THINKING=high ./personas/bin/bob
+CAROL_THINKING=medium ./personas/bin/carol
+# or pass pi args directly; later --model / --thinking wins
+./personas/bin/bob --model deepseek/deepseek-v4-pro --thinking high
 ```
 
 Extra tool deny-list:
