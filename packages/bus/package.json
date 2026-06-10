@@ -27,6 +27,10 @@
     "README.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": "./dist/extensions/bus/index.js",
+    "./lib/deliver": "./dist/lib/deliver.js"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.74.0"
   },

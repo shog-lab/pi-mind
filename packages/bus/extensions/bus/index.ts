@@ -16,44 +16,29 @@
  * deliverAs:"followUp" — your agent treats it as if a user typed
  * `[from <sender>] <body>` and starts a turn. This is how an idle pi gets
  * woken up by another pi.
+ *
+ * Pure deliver primitives (findByName / writeInboxMessage / readInbox / etc.)
+ * live in `../../lib/deliver.ts` so non-extension callers (cron triggers,
+ * other extensions, CLI scripts) can drop messages without booting a full pi.
  */
 
 import {
   existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync,
-  renameSync, rmSync, statSync, watch as fsWatch, type FSWatcher,
+  renameSync, rmSync, watch as fsWatch, type FSWatcher,
 } from "node:fs";
 import { join } from "node:path";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { resolvePiMindDir } from "@shog-lab/pi-utils";
+import {
+  HEARTBEAT_INTERVAL_MS, MAX_BODY_BYTES, InboxMessageSchema,
+  busRoot, sessionsRoot, ownSessionDir, inboxDir,
+  readMeta, listLiveSessions, findByName, generateMsgId,
+  writeInboxMessage, readInbox,
+  type InboxMessage, type SessionMeta,
+} from "../../lib/deliver.js";
 
-// --- Constants ---
-
-const HEARTBEAT_INTERVAL_MS = 30_000;
-const STALE_AFTER_MS = 90_000;
-const MAX_BODY_BYTES = 16_000;       // cap inbound message body to avoid silly abuse
-
-// --- Schemas ---
-
-const SessionMetaSchema = Type.Object({
-  name: Type.String(),
-  pid: Type.Number(),
-  cwd: Type.String(),
-  joinedAt: Type.String(),
-  heartbeatAt: Type.String(),
-});
-type SessionMeta = Static<typeof SessionMetaSchema>;
-
-const InboxMessageSchema = Type.Object({
-  id: Type.String(),
-  from: Type.String(),
-  body: Type.String(),
-  sentAt: Type.String(),
-});
-type InboxMessage = Static<typeof InboxMessageSchema>;
-
-// --- Friendly name generation ---
+// --- Friendly name generation (lives in extension — only used at registration) ---
 
 const ADJECTIVES = [
   "calm", "bold", "wry", "quiet", "swift", "keen", "deft", "vivid",
@@ -69,127 +54,6 @@ function generateName(): string {
   const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
   const suffix = Math.random().toString(36).slice(2, 5);
   return `${adj}-${animal}-${suffix}`;
-}
-
-function generateMsgId(): string {
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-// --- Paths ---
-
-function busRoot(): string {
-  return join(resolvePiMindDir(), "bus");
-}
-
-function sessionsRoot(): string {
-  return join(busRoot(), "sessions");
-}
-
-function ownSessionDir(sessionId: string): string {
-  return join(sessionsRoot(), sessionId);
-}
-
-// --- Session registry I/O ---
-
-function readMeta(sessionId: string): SessionMeta | null {
-  const p = join(sessionsRoot(), sessionId, "meta.json");
-  if (!existsSync(p)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(p, "utf-8"));
-    if (Value.Check(SessionMetaSchema, parsed)) return parsed;
-  } catch { /* corrupt file → treat as missing */ }
-  return null;
-}
-
-function writeMeta(sessionId: string, meta: SessionMeta): void {
-  const dir = ownSessionDir(sessionId);
-  mkdirSync(dir, { recursive: true });
-  mkdirSync(join(dir, "inbox"), { recursive: true });
-  // Atomic via tmp+rename to avoid readers seeing half-written meta.
-  const tmp = join(dir, "meta.json.tmp");
-  const final = join(dir, "meta.json");
-  writeFileSync(tmp, JSON.stringify(meta, null, 2));
-  renameSync(tmp, final);
-}
-
-/** List live sessions (stale-filtered). Excludes `excludeId` if given (yourself). */
-function listLiveSessions(excludeId?: string): SessionMeta[] {
-  const root = sessionsRoot();
-  if (!existsSync(root)) return [];
-  const now = Date.now();
-  const live: SessionMeta[] = [];
-  for (const id of readdirSync(root)) {
-    if (id === excludeId) continue;
-    const meta = readMeta(id);
-    if (!meta) continue;
-    const lastBeat = new Date(meta.heartbeatAt).getTime();
-    if (now - lastBeat > STALE_AFTER_MS) continue;
-    live.push(meta);
-  }
-  return live;
-}
-
-/** Look up a live session by name. Returns null if not found / stale / ambiguous. */
-function findByName(name: string, excludeId?: string): { id: string; meta: SessionMeta } | { error: string } {
-  const root = sessionsRoot();
-  if (!existsSync(root)) return { error: `bus has no sessions registered` };
-  const now = Date.now();
-  const matches: Array<{ id: string; meta: SessionMeta }> = [];
-  for (const id of readdirSync(root)) {
-    if (id === excludeId) continue;
-    const meta = readMeta(id);
-    if (!meta) continue;
-    if (meta.name !== name) continue;
-    const lastBeat = new Date(meta.heartbeatAt).getTime();
-    if (now - lastBeat > STALE_AFTER_MS) continue;
-    matches.push({ id, meta });
-  }
-  if (matches.length === 0) return { error: `no live session named "${name}"` };
-  if (matches.length > 1) {
-    return { error: `ambiguous: ${matches.length} live sessions named "${name}" (pids: ${matches.map((m) => m.meta.pid).join(", ")})` };
-  }
-  return matches[0];
-}
-
-// --- Inbox I/O ---
-
-function inboxDir(sessionId: string): string {
-  return join(sessionsRoot(), sessionId, "inbox");
-}
-
-function writeInboxMessage(targetSessionId: string, msg: InboxMessage): void {
-  const dir = inboxDir(targetSessionId);
-  if (!existsSync(dir)) {
-    throw new Error(`target session ${targetSessionId} has no inbox dir (race?)`);
-  }
-  // Atomic: write to .tmp then rename so fs.watch sees one final event.
-  const tmp = join(dir, `${msg.id}.json.tmp`);
-  const final = join(dir, `${msg.id}.json`);
-  writeFileSync(tmp, JSON.stringify(msg, null, 2));
-  renameSync(tmp, final);
-}
-
-function readInbox(sessionId: string, consume: boolean): InboxMessage[] {
-  const dir = inboxDir(sessionId);
-  if (!existsSync(dir)) return [];
-  const messages: InboxMessage[] = [];
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith(".json") || f.endsWith(".tmp")) continue;
-    const path = join(dir, f);
-    try {
-      const parsed = JSON.parse(readFileSync(path, "utf-8"));
-      if (Value.Check(InboxMessageSchema, parsed)) {
-        messages.push(parsed);
-        if (consume) {
-          try { unlinkSync(path); } catch { /* race with reader, ignore */ }
-        }
-      }
-    } catch { /* corrupt file; skip + clean if consume */
-      if (consume) { try { unlinkSync(path); } catch { /* */ } }
-    }
-  }
-  messages.sort((a, b) => a.sentAt.localeCompare(b.sentAt));
-  return messages;
 }
 
 // --- Tool parameter schemas ---
@@ -220,6 +84,17 @@ export default function busExtension(pi: ExtensionAPI) {
   let watcher: FSWatcher | null = null;
   let shuttingDown = false;
   const processedMsgIds = new Set<string>();   // dedup against fs.watch firing twice
+
+  function writeMeta(sessionId: string, meta: SessionMeta): void {
+    const dir = ownSessionDir(sessionId);
+    mkdirSync(dir, { recursive: true });
+    mkdirSync(join(dir, "inbox"), { recursive: true });
+    // Atomic via tmp+rename to avoid readers seeing half-written meta.
+    const tmp = join(dir, "meta.json.tmp");
+    const final = join(dir, "meta.json");
+    writeFileSync(tmp, JSON.stringify(meta, null, 2));
+    renameSync(tmp, final);
+  }
 
   function updateHeartbeat(): void {
     if (shuttingDown) return;
