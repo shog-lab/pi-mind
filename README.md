@@ -2,7 +2,7 @@
 
 **Give your coding agent a memory that survives across sessions — inspectable as plain markdown in your repo.**
 
-> v0.14.1 · 345 tests passing · dogfooded on this repo · MIT
+> v0.14.2 · 345 tests passing · dogfooded on this repo · MIT
 
 A monorepo of capability packages for [pi](https://github.com/earendil-works/pi) (the coding-agent runtime). pi-mind turns any repo into a persistent, inspectable knowledge store: the agent writes memories as markdown files with YAML frontmatter, retrieves them by relevance, and never changes future behavior without explicit user approval; memory writes happen as visible explicit tool calls.
 
@@ -39,6 +39,22 @@ npm i -g @earendil-works/pi-coding-agent
 # 2. Add memory + ask-first skills to your repo
 cd ~/my-repo
 npm i -D @shog-lab/pi-memory
+```
+
+Using pnpm? pnpm may skip dependency lifecycle scripts unless builds are approved. If `.pi/` or `.pi-mind/` was not created after install, run from your repo root:
+
+```bash
+INIT_CWD="$PWD" pnpm exec pi-mind-init
+# if you also installed @shog-lab/pi-bus:
+INIT_CWD="$PWD" pnpm exec pi-bus-init
+```
+
+Fallback:
+
+```bash
+INIT_CWD="$PWD" node node_modules/@shog-lab/pi-memory/bin/init.js
+# if you also installed @shog-lab/pi-bus:
+INIT_CWD="$PWD" node node_modules/@shog-lab/pi-bus/bin/init.js
 ```
 
 Verify the loop:

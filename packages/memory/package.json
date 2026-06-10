@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-memory",
-  "version": "0.14.1",
+  "version": "0.14.2",
   "description": "Persistent, inspectable memory for pi-coding-agent: explicit writes, hybrid retrieval (vector + FTS5 + KG), markdown storage, and ask-first skill authoring.",
   "type": "module",
   "license": "MIT",

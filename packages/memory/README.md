@@ -35,6 +35,27 @@ npm i -D @shog-lab/pi-memory
 
 `postinstall` symlinks `extensions/memory/` and `skills/*/` into the host repo's `.pi/`, then creates the `raw/ knowledge/` directories. Idempotent — re-running `npm install` is safe.
 
+### pnpm projects
+
+pnpm may skip dependency lifecycle scripts unless the package is approved for builds (for example via `pnpm approve-builds` / `onlyBuiltDependencies`). If `.pi/` or `.pi-mind/` was not created after install, run the init command manually from your repo root:
+
+```bash
+INIT_CWD="$PWD" pnpm exec pi-mind-init
+```
+
+Fallback if `pnpm exec` cannot resolve the bin:
+
+```bash
+INIT_CWD="$PWD" node node_modules/@shog-lab/pi-memory/bin/init.js
+```
+
+If you also installed `@shog-lab/pi-bus`, run its init too:
+
+```bash
+INIT_CWD="$PWD" pnpm exec pi-bus-init
+# or: INIT_CWD="$PWD" node node_modules/@shog-lab/pi-bus/bin/init.js
+```
+
 `pi-mind` declares `@earendil-works/pi-coding-agent` as a peer dependency. Make sure `pi` is on `PATH` (typically via `npm i -g @earendil-works/pi-coding-agent` — the [pi](https://github.com/earendil-works/pi) coding-agent runtime).
 
 ## Quickstart

@@ -17,6 +17,20 @@ npm i -D @shog-lab/pi-bus
 
 `postinstall` symlinks `dist/extensions/bus/` into the host repo's `.pi/extensions/`, so pi auto-discovers on next launch.
 
+### pnpm projects
+
+pnpm may skip dependency lifecycle scripts unless the package is approved for builds (for example via `pnpm approve-builds` / `onlyBuiltDependencies`). If `.pi/extensions/bus` was not created after install, run the init command manually from your repo root:
+
+```bash
+INIT_CWD="$PWD" pnpm exec pi-bus-init
+```
+
+Fallback if `pnpm exec` cannot resolve the bin:
+
+```bash
+INIT_CWD="$PWD" node node_modules/@shog-lab/pi-bus/bin/init.js
+```
+
 ## Use
 
 Three tools the LLM can call:
