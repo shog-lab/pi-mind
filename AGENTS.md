@@ -279,7 +279,7 @@ node packages/memory/scripts/knowledge-lint.ts   # Check knowledge/ schema healt
 Three persona pi sessions — **Alice** (planner / dispatcher / reviewer / writer / memory lead), **Bob** (implementer), **Carol** (independent reviewer / methodology auditor) — operate this repo. The canonical prompt sources, user-facing launchers, and side-effect policy live in [`personas/`](personas/):
 
 - `personas/bin/{alice,bob,carol}` — user-facing launchers with default models, `PI_AGENT_NAME`, prompt loading, and hard state-changing tool excludes for Bob/Carol
-- `personas/bin/start` — internal shared launcher implementation; not the normal user entry point
+- `personas/bin/run` — internal generic pi launcher; not the normal user entry point
 - `personas/prompts/{alice,bob,carol}.md` — persona prompt sources loaded via `--append-system-prompt`
 - `personas/policy.md` — cross-persona side-effect policy, escalation rules, context/cost budget
 

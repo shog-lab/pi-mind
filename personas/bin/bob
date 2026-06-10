@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/start" bob "$@"
+
+PERSONA="bob"
+MODEL="${BOB_MODEL:-minimax-cn/MiniMax-M3}"
+EXCLUDE_TOOLS="remember_this,observe,update_memory,mark_memory_audit_complete,create_skill,update_skill"
+if [[ -n "${BOB_EXCLUDE_TOOLS:-}" ]]; then
+  EXCLUDE_TOOLS="$EXCLUDE_TOOLS,${BOB_EXCLUDE_TOOLS}"
+fi
+NO_SKILLS="${BOB_NO_SKILLS:-}"
+
+exec "$SCRIPT_DIR/run" "$PERSONA" "$MODEL" "$EXCLUDE_TOOLS" "$NO_SKILLS" "$@"

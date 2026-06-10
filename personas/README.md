@@ -68,14 +68,14 @@ personas/
     ├── alice              # user-facing launcher
     ├── bob                # user-facing launcher
     ├── carol              # user-facing launcher
-    └── start              # internal shared implementation
+    └── run                # internal generic pi launcher
 ```
 
 ## Layering
 
 - `prompts/*.md` describes role behavior.
 - `policy.md` defines cross-role permissions and escalation.
-- `bin/start` implements only the launch mechanics and hard tool excludes.
+- `bin/run` implements only generic launch mechanics; persona defaults live in `bin/alice`, `bin/bob`, and `bin/carol`.
 - Project facts and package rules still live in root `AGENTS.md`.
 
 ## Hierarchy

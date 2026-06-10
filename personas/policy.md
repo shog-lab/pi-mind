@@ -4,13 +4,13 @@ This is the repo-local side-effect policy for Alice / Bob / Carol.
 
 - `prompts/*.md` says how each persona behaves.
 - `policy.md` says who may cause side effects.
-- `bin/start` enforces the small subset that can be enforced by CLI flags.
+- `bin/run` enforces the small subset that can be enforced by CLI flags; persona-specific defaults live in `bin/alice`, `bin/bob`, and `bin/carol`.
 
 User remains the final authority. Anything destructive, externally visible, or cost-bearing is proposed first and executed only after approval.
 
 ## Hard tool excludes
 
-`personas/bin/bob` and `personas/bin/carol` start through `bin/start` with these tools disabled:
+`personas/bin/bob` and `personas/bin/carol` pass these disabled tools to `bin/run`:
 
 ```text
 remember_this,observe,update_memory,mark_memory_audit_complete,create_skill,update_skill
