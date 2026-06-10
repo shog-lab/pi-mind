@@ -1,16 +1,16 @@
-# Personas — Permissions
+# Personas — Policy
 
-This is the repo-local permission contract for Alice / Bob / Carol.
+This is the repo-local side-effect policy for Alice / Bob / Carol.
 
 - `prompts/*.md` says how each persona behaves.
-- `permissions.md` says who may cause side effects.
-- `bin/start.sh` enforces the small subset that can be enforced by CLI flags.
+- `policy.md` says who may cause side effects.
+- `bin/start` enforces the small subset that can be enforced by CLI flags.
 
 User remains the final authority. Anything destructive, externally visible, or cost-bearing is proposed first and executed only after approval.
 
 ## Hard tool excludes
 
-`personas/bin/start.sh` starts **Bob** and **Carol** with these tools disabled:
+`personas/bin/bob` and `personas/bin/carol` start through `bin/start` with these tools disabled:
 
 ```text
 remember_this,observe,update_memory,mark_memory_audit_complete,create_skill,update_skill
