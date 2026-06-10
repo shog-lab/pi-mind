@@ -1,7 +1,7 @@
 {
   "name": "@shog-lab/pi-toolkit",
   "version": "0.4.0",
-  "description": "Common pi-coding-agent extensions: web search (mmx), MCP server bridge, browser automation (agent-browser). NOTE: 0.3.0 removed spawn_subagent (→ @shog-lab/pi-subagent); 0.4.0 removed understand_image (models have native vision now).",
+  "description": "Common pi-coding-agent extensions: web search (mmx), MCP server bridge, cron scheduling, browser automation (agent-browser). NOTE: 0.3.0 removed spawn_subagent (→ @shog-lab/pi-subagent); 0.4.0 removed understand_image (models have native vision now).",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -19,11 +19,13 @@
     "postinstall": "node bin/init.js"
   },
   "bin": {
-    "pi-toolkit-init": "bin/init.js"
+    "pi-toolkit-init": "bin/init.js",
+    "cron-trigger": "bin/cron-trigger.mjs"
   },
   "files": [
     "dist/**",
     "bin/**/*.js",
+    "bin/cron-trigger.mjs",
     "README.md",
     "LICENSE"
   ],
@@ -33,7 +35,8 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",
     "agent-browser": "^0.27.0",
-    "@shog-lab/pi-utils": "*"
+    "@shog-lab/pi-utils": "*",
+    "@shog-lab/pi-bus": "*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

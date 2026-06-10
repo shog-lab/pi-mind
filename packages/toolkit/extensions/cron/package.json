@@ -1,0 +1,8 @@
+{
+  "name": "cron",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OS-scheduled task delivery via bus inbox (macOS launchd plists). Tools: schedule_cron, list_cron, remove_cron.",
+  "type": "module",
+  "main": "index.js"
+}
