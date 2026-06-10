@@ -66,17 +66,18 @@ Switching position on this continuum is configuration, not rewrite. A "memory ke
 
 **Caveat**: an auto-approve keeper is **structurally identical** to a background LLM judge, just with audit trail. It's OK as a deliberate fallback, but treat "auto-approve everywhere" as a code smell. The point of graduated autonomy is to let you slide toward review when stakes rise, not to dress up silent autonomy.
 
-### 4. Trigger chain must originate from user action
+### 4. Cron is delegated user trigger
 
-The legality of a memory write or skill change is judged by the **start of its trigger chain**, not by which agent ultimately executes it.
+A cron-triggered agent turn is legally equivalent to a user-triggered one — the user deliberately installed the scheduled task, and the agent receiving the trigger has the same persona identity and permission boundaries as always.
 
 ```
-✅ Legal:  user message  →  agent decides  →  (optionally bus → other agent)  →  remember_this
+✅ Legal:  OS cron  →  write inbox →  agent receives message  →  acts within its persona boundary
+✅ Legal:  OS cron  →  pi --print "msg"  →  agent acts within its persona boundary
 ❌ Illegal: agent_end hook  →  background LLM  →  silent write
-❌ Illegal: cron / timer  →  ...  →  state mutation
+❌ Illegal: in-process timer / setInterval  →  ...  →  state mutation
 ```
 
-A `remember_this` call routed through three agents via bus is still legal **if the chain started with a user message**. A `remember_this` triggered by an `agent_end` background hook is not, even if it goes through a "keeper" agent first — the user never invited that decision.
+The distinction is between **external scheduling** (user-configured OS scheduler) and **internal scheduling** (agent background loops). External scheduling is user intent made mechanical; internal scheduling is autonomy without oversight.
 
 ### How these principles map to current packages
 
@@ -85,7 +86,7 @@ A `remember_this` call routed through three agents via bus is still legal **if t
 | `pi-utils` | ✅ Pure infra | No autonomy concerns |
 | `pi-memory` memory (`remember_this`, retrieval, retention) | ✅ Per principle 2 | `worth-remembering-llm` removed in 0.6.0 — memory is now passive |
 | `pi-memory` skill-evolution | ✅ Per principle 1 | `write_skill` replaced by ask-first `create_skill` + `update_skill` in 0.6.0 |
-| `pi-toolkit` (web-search / mcp-bridge) | ✅ Scoped tools, no persistent autonomy | — |
+| `pi-toolkit` (web-search / mcp-bridge / cron) | ✅ Scoped tools, no persistent autonomy | `schedule_cron` delegates scheduling to OS launchd; trigger delivers via bus inbox — same mechanism as `agent_send` |
 | `pi-subagent` | ✅ Scoped, closed-loop spawn | — |
 | `pi-bus` | ✅ The substrate enabling principle 3 | — |
 | ~~`pi-goals` (ralph)~~ | 🗑️ **Removed 2026-05-28** | Autonomous orchestrated workflows are platform-level work. At the extension layer, the same workflows are better composed *visibly* via `pi-bus` (peer mesh) + `pi-subagent` (call tree) + git worktree, with the user in the loop per spawn. Same capability surface, opposite transparency posture. Last release `0.5.1` remains on npm as deprecated, pinnable as fallback. |
@@ -126,6 +127,7 @@ npx tsc -w -p packages/bus
 | `skill-evolution` | `packages/memory/extensions/skill-evolution/` | `create_skill` + `update_skill` tools — agent proposes in chat, gets explicit user approval, then writes `.pi/skills/<name>/SKILL.md` (with `.bak.<ts>` on overwrite). Backs the `define-skill` / `revise-skill` skills. (0.6.0 replaced the prior `write_skill` per Design Principles.) |
 | `web-search` | `packages/toolkit/extensions/web-search/` | `web_search` tool — backed by mmx CLI. |
 | `mcp-bridge` | `packages/toolkit/extensions/mcp-bridge/` | Spawns MCP servers from `mcp-servers.json`, registers their tools as `<server>_<tool>`. |
+| `cron` | `packages/toolkit/extensions/cron/` | `schedule_cron` / `list_cron` / `remove_cron` — OS-scheduled tasks that deliver messages via bus inbox. |
 | `subagent` | `packages/subagent/extensions/subagent/` | `spawn_subagent` tool — fire-and-forget child pi via `spawnPi`. (Moved from pi-toolkit in toolkit 0.3.0.) |
 | `bus` | `packages/bus/extensions/bus/` | `agent_list` / `agent_send` / `agent_inbox` — peer-to-peer messaging between pi sessions in same repo. Push-trigger via `pi.sendUserMessage(..., { deliverAs: "followUp" })`. |
 
@@ -137,7 +139,6 @@ Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.
 |---|---|---|
 | `memory-audit` | `packages/memory/skills/memory-audit/` | Memory hygiene audit loop. |
 | `knowledge-lint` | `packages/memory/skills/knowledge-lint/` | Schema validation + auto-fix for knowledge entries. (Was `wiki-lint` before 0.3.0.) |
-| `scheduling` | `packages/memory/skills/scheduling/` | Cron setup helper. |
 | `define-skill` | `packages/memory/skills/define-skill/` | Compose a brand-new skill via `create_skill` (ask-first). |
 | `revise-skill` | `packages/memory/skills/revise-skill/` | Update an existing skill via `update_skill` (ask-first). |
 | `agent-browser` | `node_modules/agent-browser/skills/agent-browser/` | Browser automation (external dep). |
@@ -259,7 +260,7 @@ See [[e2e-before-publish]] memory.
 
 - **Single source of truth for schemas** — frontmatter via `packages/memory/lib/schema.ts`; bus message / inbox schemas inline in `packages/bus/extensions/bus/index.ts`; never duplicate.
 - **File-based coordination** — packages share `.pi-mind/` (memory + bus state); no in-process IPC.
-- **Cron-driven maintenance** — scheduled maintenance runs via OS cron, not in-process timer (pi has no daemon).
+- **OS-scheduled tasks** — scheduled maintenance and user-delegated cron tasks run via OS scheduler (crontab / launchd), not in-process timer (pi has no daemon).
 - **Concurrent writes** — `withGroupLock` (proper-lockfile) for filesystem, `busy_timeout = 5000` for SQLite.
 - **Idempotent postinstall** — `bin/init.js` symlink creation is safe to re-run.
 - **No dual-write** — refactor in one go, rely on git revert; don't ship transition shims. See [[no-dual-write]].

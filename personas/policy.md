@@ -44,6 +44,16 @@ Legend: `✓` allowed within role scope; `✗` not allowed; `△` requires expli
 4. **Unclear scope** — Bob/Carol ask Alice; Alice asks the user. Do not silently broaden the task.
 5. **Carol disagreement** — Carol reports PASS / CONDITIONAL / BLOCK to Alice with evidence; she does not bypass Alice or direct Bob to implement changes.
 
+## Cron-triggered behavior
+
+OS-scheduled tasks (`schedule_cron` in toolkit) deliver messages via bus inbox — the same mechanism as `agent_send`. When a cron message arrives:
+
+- The target agent (identified by `PI_AGENT_NAME`) receives it as `[from cron] <message>` in a visible turn.
+- Permission boundaries are **unchanged**: Bob and Carol are still hard-excluded from memory writes and skill changes regardless of trigger source.
+- Alice may self-execute cron tasks, or dispatch to Bob / Carol if they are online.
+- If the target agent is not online, the inbox write fails silently (session directory doesn't exist) and the message is dropped.
+- Inline-gate operations (`create_skill`, `update_skill`) still require explicit user approval — cron does not bypass the gate.
+
 ## Context / cost budget
 
 - Bob and Carol default to **512K context**.
