@@ -2,6 +2,22 @@
   "name": "@shog-lab/pi-toolkit",
   "version": "0.4.0",
   "description": "Common pi-coding-agent extensions: web search (mmx), MCP server bridge, cron scheduling, browser automation (agent-browser). NOTE: 0.3.0 removed spawn_subagent (→ @shog-lab/pi-subagent); 0.4.0 removed understand_image (models have native vision now).",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "web-search",
+    "mcp",
+    "cron",
+    "agent-tools"
+  ],
+  "pi": {
+    "extensions": [
+      "dist/extensions/web-search/index.js",
+      "dist/extensions/mcp-bridge/index.js",
+      "dist/extensions/cron/index.js"
+    ]
+  },
   "type": "module",
   "license": "MIT",
   "repository": {
