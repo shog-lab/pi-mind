@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * pi-bus postinstall: wire the extension into the host repo's .pi/ tree.
+ * pi-bus postinstall: wire the extension and packaged skills into the host repo's .pi/ tree.
  *
- *   .pi/extensions/bus → node_modules/@shog-lab/pi-bus/dist/extensions/bus
+ *   .pi/extensions/bus       → node_modules/@shog-lab/pi-bus/dist/extensions/bus
+ *   .pi/skills/build-personas → node_modules/@shog-lab/pi-bus/skills/build-personas
  *
  * Idempotent. Disable with PI_BUS_SKIP_INIT=1.
  */
 
-import { existsSync, mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readlinkSync, realpathSync, symlinkSync, unlinkSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -78,7 +79,7 @@ function linkInto(srcDir, destDir) {
     const src = join(srcDir, name);
     if (!statSync(src).isDirectory()) continue;
     const dest = join(destDir, name);
-    const relSrc = relative(destDir, src);
+    const relSrc = relative(realpathSync(destDir), realpathSync(src));
 
     if (existsSync(dest)) {
       try {
@@ -96,5 +97,6 @@ function linkInto(srcDir, destDir) {
 }
 
 linkInto(join(PKG_ROOT, "dist", "extensions"), join(HOST_ROOT, ".pi", "extensions"));
+linkInto(join(PKG_ROOT, "skills"), join(HOST_ROOT, ".pi", "skills"));
 
 console.log(`[pi-bus] ready. Open multiple pi terminals in ${HOST_ROOT} — they auto-join the same bus.`);

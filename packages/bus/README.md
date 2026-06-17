@@ -11,11 +11,19 @@
 
 ## Install
 
+Pi-native install (recommended for pi users):
+
+```bash
+pi install npm:@shog-lab/pi-bus
+```
+
+Node/npm install (works well inside existing Node repos):
+
 ```bash
 npm i -D @shog-lab/pi-bus
 ```
 
-`postinstall` symlinks `dist/extensions/bus/` into the host repo's `.pi/extensions/`, so pi auto-discovers on next launch.
+`postinstall` symlinks `dist/extensions/bus/` into the host repo's `.pi/extensions/` and packaged skills into `.pi/skills/`, so pi auto-discovers them on next launch.
 
 ### pnpm projects
 
@@ -110,7 +118,15 @@ The recipient agent sees the message prefixed `[from <sender>]`. It can:
 
 ## Composing with roles
 
-Combine with pi's `--append-system-prompt <file>` (which accepts a file path) to spin up role-specific terminals:
+The package includes a `build-personas` skill for scaffolding repo-local personas that coordinate through pi-bus. Use it when you want a planner / implementer / reviewer setup with prompts, launchers, permission policy, and a verification flow:
+
+```text
+/skill:build-personas
+```
+
+Or ask your agent: "Build repo-local personas for this project using pi-bus."
+
+For a minimal manual setup, combine with pi's `--append-system-prompt <file>` (which accepts a file path) to spin up role-specific terminals:
 
 ```bash
 # ~/.zshrc
