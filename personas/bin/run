@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Internal helper. User-facing entrypoints are personas/bin/alice|bob|carol.
+# Internal helper. User-facing entrypoint is personas/bin/shog.
 # Usage: run <persona> <model> <thinking> <exclude-tools> <no-skills-flag> [extra pi args...]
 
 set -euo pipefail

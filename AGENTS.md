@@ -275,16 +275,16 @@ npm run test --workspace=packages/bus          # Bus tests
 node packages/memory/scripts/knowledge-lint.ts   # Check knowledge/ schema health
 ```
 
-## Personas (repo-local orchestration)
+## Personas (repo-local operation)
 
-Three persona pi sessions — **Alice** (planner / dispatcher / reviewer / writer / memory lead), **Bob** (implementer), **Carol** (independent reviewer / methodology auditor) — operate this repo. The canonical prompt sources, user-facing launchers, and side-effect policy live in [`personas/`](personas/):
+A single default persona — **Shog** — operates this repo. Shog is planner, implementer, reviewer, writer, release runner, and memory lead. The canonical prompt source, user-facing launcher, and side-effect policy live in [`personas/`](personas/):
 
-- `personas/bin/{alice,bob,carol}` — user-facing launchers with default models/thinking levels, `PI_AGENT_NAME`, prompt loading, and hard state-changing tool excludes for Bob/Carol
+- `personas/bin/shog` — user-facing launcher with default model/thinking level, `PI_AGENT_NAME`, and prompt loading
 - `personas/bin/run` — internal generic pi launcher; not the normal user entry point
-- `personas/prompts/{alice,bob,carol}.md` — persona prompt sources loaded via `--append-system-prompt`
-- `personas/policy.md` — cross-persona side-effect policy, escalation rules, context/cost budget
+- `personas/prompts/shog.md` — Shog behavior prompt loaded via `--append-system-prompt`
+- `personas/policy.md` — side-effect policy, escalation rules, context/cost budget
 
-Hierarchy: `user > Alice > Bob / Carol`. Bob and Carol may exchange facts/evidence/test output directly; task dispatch, plan changes, merge/release decisions all flow through Alice and ultimately the user. This is the operationalization of the Design Principles above — not a separate authority.
+Hierarchy: `user > Shog`. Optional helper agents may still be started manually via `pi-bus`, `pi-subagent`, or another terminal for one-off review/exploration, but they are tools rather than standing authorities. Destructive, externally visible, cost-bearing, or behavior-changing actions still require explicit user approval.
 
 ## Environment Variables
 
