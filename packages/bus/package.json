@@ -1,6 +1,6 @@
 {
   "name": "@shog-lab/pi-bus",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Atomic inter-pi messaging primitive: any pi window on the same host (and git repo) auto-joins. 3 tools (agent_list / agent_send / agent_inbox). Incoming messages auto-trigger the recipient's agent via pi.sendUserMessage.",
   "keywords": [
     "pi-package",
@@ -12,8 +12,12 @@
     "messaging"
   ],
   "pi": {
-    "extensions": ["dist/extensions/bus/index.js"],
-    "skills": ["skills"]
+    "extensions": [
+      "dist/extensions/bus/index.js"
+    ],
+    "skills": [
+      "skills"
+    ]
   },
   "type": "module",
   "license": "MIT",
