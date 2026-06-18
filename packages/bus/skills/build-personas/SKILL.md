@@ -27,7 +27,7 @@ personas/
     └── reviewer
 ```
 
-Adapt names to the user's domain if requested (for example Alice/Bob/Carol, architect/builder/auditor, growth/writer/reviewer).
+Adapt names to the user's domain if requested (for example architect/builder/auditor, growth/writer/reviewer, planner/implementer/reviewer).
 
 ## Workflow
 

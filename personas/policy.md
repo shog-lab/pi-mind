@@ -10,7 +10,7 @@ User remains the final authority. Anything destructive, externally visible, cost
 
 ## Current model
 
-pi-mind no longer runs standing Alice/Bob/Carol terminals by default. Shog does planning, implementation, review, writing, releases, and memory leadership directly.
+pi-mind no longer runs standing helper-agent terminals by default. Shog does planning, implementation, review, writing, releases, and memory leadership directly.
 
 Extra agents may still be started manually through `pi-bus` or `pi-subagent` for one-off review/exploration, but they do not change this hierarchy:
 

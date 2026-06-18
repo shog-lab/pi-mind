@@ -94,7 +94,7 @@ date: 2026-05-08T10:00:00.000Z
 type: project
 tier: L2
 tags: [auth, decision]
-triples: [["alice", "owns", "auth-service"]]
+triples: [["maria", "owns", "auth-service"]]
 ---
 
 We chose JWT over sessions because of mobile client constraints.
@@ -125,7 +125,7 @@ This builds on [[agent-memory]] and supersedes [[old-design-2024]].
 When a memory involves people, schedules, or relationships, add triples. The KG module indexes them for queries like "who owns X" or "when does Y happen":
 
 ```yaml
-triples: [["alice", "owns", "auth-service"], ["alice", "role", "backend-lead"]]
+triples: [["maria", "owns", "auth-service"], ["maria", "role", "backend-lead"]]
 ```
 
 **Naming convention** (the KG index is only as good as the predicate vocabulary — fragmented relations never get joined):
@@ -134,7 +134,7 @@ triples: [["alice", "owns", "auth-service"], ["alice", "role", "backend-lead"]]
 - **Predicate**: snake_case verb phrase. `addTriple` normalizes spaces to `_` on ingest, so `uses model` and `uses_model` end up the same — write it snake_case anyway. No copula (`is`, `has`), no `related_to` (pick a direction).
 - **Direction**: pick one. Never mix `owns` / `owner_of` / `owned_by` — that's relation fragmentation.
 
-Good: `carol uses_model DeepSeek V4` · `pi-memory released_version 0.12.0` · `pi-mind-lint supports_flag --rebuild-kg`. Bad: `x is y` · `a has b` · `p related_to q`.
+Good: `research-agent uses_model DeepSeek V4` · `pi-memory released_version 0.12.0` · `pi-mind-lint supports_flag --rebuild-kg`. Bad: `x is y` · `a has b` · `p related_to q`.
 
 Audit the current state at any time:
 

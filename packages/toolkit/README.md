@@ -52,7 +52,7 @@ The `cron` extension registers OS-scheduled tasks that deliver messages to the c
 Example use in pi:
 
 ```text
-Schedule a weekday 9am reminder to Alice to run the memory audit.
+Schedule a weekday 9am reminder to Shog to run the memory audit.
 ```
 
 The extension stores job metadata under `.pi-mind/cron/jobs.json` and creates macOS launchd plists under `~/Library/LaunchAgents/`. If the target agent is offline when the schedule fires, the trigger exits successfully and drops the message.

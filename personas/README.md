@@ -2,7 +2,7 @@
 
 `personas/` is pi-mind's repo-local operator prompt and launcher layer.
 
-The current default is intentionally simple: **one persona, Shog**. Multi-agent Alice/Bob/Carol orchestration was useful while dogfooding `pi-bus`, but the day-to-day project workflow is now Shog operating directly, with extra agents started only when the user explicitly wants them.
+The current default is intentionally simple: **one persona, Shog**. Legacy multi-agent orchestration was useful while dogfooding `pi-bus`, but the day-to-day project workflow is now Shog operating directly, with extra agents started only when the user explicitly wants them.
 
 ## Start
 
@@ -17,7 +17,7 @@ You should not need to remember prompt paths, model names, agent names, or launc
 
 | Persona | Launcher | Default model | Default thinking | Notes |
 |---|---|---|---|---|
-| Shog | `./personas/bin/shog` | `openai/gpt-5.5` | `high` | planner / implementer / reviewer / writer / release runner / memory lead |
+| Shog | `./personas/bin/shog` | `openai-codex/gpt-5.5` | `high` | planner / implementer / reviewer / writer / release runner / memory lead |
 
 ## Overrides
 

@@ -172,7 +172,7 @@ date: 2026-05-08T10:00:00.000Z
 type: project          # user | project | agent-feedback | reference | compaction
 tier: L2               # L1 (always-injected) | L2 (retrieved by relevance)
 tags: [auth, decision]
-triples: [["alice", "owns", "auth-service"]]
+triples: [["maria", "owns", "auth-service"]]
 ---
 
 Content here.
@@ -186,7 +186,7 @@ Curated `triples:` in `knowledge/*.md` is the SoT for the SQLite KG index. Fragm
 - **Predicate**: snake_case verb phrase. `addTriple` lowercases and replaces spaces with `_` on ingest, so `uses model` and `uses_model` end up the same predicate — write it snake_case anyway for readability. No nested JSON, no English articles (`is`, `has`).
 - **Direction**: pick one. If the relation is asymmetric (X owns Y), write it that direction. If symmetric (X knows Y), write either direction but stay consistent across the corpus. Never mix `owns` / `owner_of` / `owned_by` — pick one.
 - **Examples** (good):
-  - `carol uses_model DeepSeek V4`
+  - `research-agent uses_model DeepSeek V4`
   - `pi-memory released_version 0.12.0`
   - `pi-mind-lint supports_flag --rebuild-kg`
 - **Examples** (bad — would get surfaced by `pi-mind-lint --kg-health`):

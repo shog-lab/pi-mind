@@ -62,13 +62,13 @@ date: 2026-05-08T10:00:00.000Z
 type: project
 tier: L2
 tags: [team, ownership]
-triples: [["alice", "owns", "auth-service"], ["alice", "role", "backend-lead"]]
+triples: [["maria", "owns", "auth-service"], ["maria", "role", "backend-lead"]]
 ---
 
-Alice owns the auth service.
+Maria owns the auth service.
 ```
 
-Triples enable structured queries like "who owns X" or "what does alice do." The `triples` field is the source of truth — the SQLite `kg_*` index is rebuilt from it automatically on the next sync.
+Triples enable structured queries like "who owns X" or "what does maria do." The `triples` field is the source of truth — the SQLite `kg_*` index is rebuilt from it automatically on the next sync.
 
 ### Page interconnection
 
