@@ -139,6 +139,7 @@ Tool names stay `snake_case` for LLM stability; extension dirs are `kebab-case`.
 |---|---|---|
 | `memory-audit` | `packages/memory/skills/memory-audit/` | Memory hygiene audit loop. |
 | `knowledge-lint` | `packages/memory/skills/knowledge-lint/` | Schema validation + auto-fix for knowledge entries. (Was `wiki-lint` before 0.3.0.) |
+| `promote-memory` | `packages/memory/skills/promote-memory/` | Propose user-approved promotion of useful memory into human docs (`AGENTS.md`, README, `docs/`). |
 | `define-skill` | `packages/memory/skills/define-skill/` | Compose a brand-new skill via `create_skill` (ask-first). |
 | `revise-skill` | `packages/memory/skills/revise-skill/` | Update an existing skill via `update_skill` (ask-first). |
 | `agent-browser` | `node_modules/agent-browser/skills/agent-browser/` | Browser automation (external dep). |

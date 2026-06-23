@@ -181,10 +181,11 @@ ollama serve   # if not already running as a service
 
 ## Memory maintenance
 
-Three mechanisms keep memory healthy. None require a daemon — pi-mind has no background process; everything piggybacks on the natural rhythm of agent interaction.
+Several workflows keep memory healthy. None require a daemon — pi-mind has no background process; everything piggybacks on the natural rhythm of agent interaction.
 
 - **`knowledge-lint`** — validates frontmatter, finds duplicates, flags stale entries. With `--fix` it auto-migrates legacy fields. With `--prune` it deletes age-expired memories + raw artifacts (`--prune --apply` to actually delete; default is dry-run).
 - **`memory-audit`** — agent-executed skill: scans the maintenance log, samples LLM decisions, surfaces problems. Triggered by an "audit overdue" notice the extension injects into the agent's context at `before_agent_start`; the agent decides when to honor it.
+- **`promote-memory`** — agent-executed skill: reviews retrieved memory and proposes user-approved promotion into human docs such as `AGENTS.md`, README, or `docs/`. It is not a `.pi-mind/**` sync workflow.
 - **Auto-forget** — `saveMemory` increments a persistent counter (`raw/maintenance-log/last-forget.json`); every 50 writes the extension runs `forgetOldMemories()` synchronously and resets. No cron needed.
 
 Retention policy (`lib/forget.ts`):

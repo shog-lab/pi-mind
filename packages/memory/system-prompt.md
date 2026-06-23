@@ -122,12 +122,13 @@ Episodic entries land in `$PI_MIND_DIR/raw/observations/` chronologically (not f
 
 ## Memory maintenance
 
-Two mechanisms keep memory healthy. Neither needs a daemon — they run when invoked: by you (when the user asks, or when you honor the audit-overdue notice below) or by an optional OS cron the user installs:
+Several workflows keep memory healthy. None of them needs a daemon — they run when invoked: by you (when the user asks, or when you honor the audit-overdue notice below) or by an optional OS cron the user installs:
 
 - **knowledge-lint** — checks frontmatter validity, finds duplicates, flags stale entries. Runs typically nightly.
 - **memory-audit** — reviews recent changes (knowledge writes, observations, compaction summaries), promotes patterns, archives obsolete entries.
+- **promote-memory** — reviews retrieved memory and proposes user-approved promotion into human docs such as `AGENTS.md`, README, or `docs/`; it is not a `.pi-mind/**` sync workflow.
 
-You may be invoked manually by the user to run these (`use memory-audit skill`, `use knowledge-lint skill`). Behave like a careful editor — explain what you change and why.
+You may be invoked manually by the user to run these (`use memory-audit skill`, `use knowledge-lint skill`, `use promote-memory skill`). Behave like a careful editor — explain what you change and why.
 
 ## Scheduled tasks
 
